@@ -1,0 +1,2 @@
+donor_id,slide_id,roi_id,segment_id,compartment,diagnosis,gold_stage,area_um2,nuclei_count,dcc_file,include_qc,exclusion_reason
+

@@ -1,0 +1,33 @@
+# Local data and generated outputs
+data/**
+!data/README.md
+results/**
+!results/README.md
+outputs/
+intermediate/**
+!intermediate/README.md
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments and editors
+.venv/
+.env
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# R / Bioconductor
+.Rhistory
+.RData
+.Rproj.user/
+renv/library/
+renv/staging/

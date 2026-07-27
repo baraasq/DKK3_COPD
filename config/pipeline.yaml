@@ -1,0 +1,51 @@
+project:
+  name: DKK3_COPD
+  primary_dataset: GSE292993
+  primary_gene: DKK3
+
+stages:
+  - id: 00_setup
+    outputs:
+      - meta/source_manifest.tsv
+  - id: 01_download
+    outputs:
+      - data/raw/gse292993
+  - id: 02_metadata
+    outputs:
+      - meta/sample_sheet.csv
+      - meta/roi_metadata.csv
+  - id: 03_geomx_qc
+    outputs:
+      - intermediate/qc
+      - intermediate/geomx_objects
+  - id: 04_normalization
+    outputs:
+      - intermediate/normalized
+  - id: 05_dkk3
+    outputs:
+      - intermediate/dkk3
+      - results/dkk3
+  - id: 06_celltype
+    outputs:
+      - intermediate/deconvolution
+      - results/compartments
+  - id: 07_communication
+    outputs:
+      - intermediate/communication
+      - results/pathways
+      - results/niches
+  - id: 08_validation
+    outputs:
+      - intermediate/validation
+  - id: 09_figures
+    outputs:
+      - results/figures
+      - results/tables
+
+guardrails:
+  - Raw data are read-only after download.
+  - Donors, not ROIs, are biological replicates.
+  - Airway, vessel, and parenchymal ROIs are modeled separately before pooling.
+  - DKK3 presence in the panel is verified from the PKC and DCC inputs.
+  - Cell-cell communication is hypothesis-generating and requires cell-state support.
+

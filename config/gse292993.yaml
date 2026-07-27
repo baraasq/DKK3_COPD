@@ -1,0 +1,79 @@
+study:
+  accession: GSE292993
+  name: COPD GeoMx whole-transcriptome spatial atlas
+  platform: NanoString GeoMx Digital Spatial Profiler
+  assay: Whole Transcriptome Atlas
+  primary_gene: DKK3
+  disease: COPD
+  biological_replicate: donor
+  repeated_measure: ROI
+
+paths:
+  raw_root: data/raw/gse292993
+  dcc_dir: data/raw/gse292993/dcc
+  pkc_dir: data/raw/gse292993/pkc
+  geo_metadata_dir: data/raw/gse292993/geo_metadata
+  roi_annotations_dir: data/spatial/gse292993/roi_annotations
+  images_dir: data/spatial/gse292993/images
+  processed_dir: data/processed/gse292993
+  geomx_objects_dir: intermediate/geomx_objects
+  qc_dir: intermediate/qc
+  normalized_dir: intermediate/normalized
+  pseudobulk_dir: intermediate/pseudobulk
+  results_dir: results
+
+metadata:
+  sample_sheet: meta/sample_sheet.csv
+  roi_metadata: meta/roi_metadata.csv
+  source_manifest: meta/source_manifest.tsv
+  required_fields:
+    - donor_id
+    - diagnosis
+    - gold_stage
+    - smoking_status
+    - slide_id
+    - roi_id
+    - segment_id
+    - compartment
+
+design:
+  compartments:
+    - parenchyma
+    - airway
+    - vessel
+  disease_levels:
+    - Control
+    - COPD
+  nesting:
+    - donor_id
+    - slide_id
+    - roi_id
+  primary_contrast: COPD_vs_Control
+  primary_compartment: parenchyma
+  secondary_compartments:
+    - airway
+    - vessel
+
+qc:
+  # Thresholds are deliberately unset until the study metadata and negative
+  # probes have been audited. Do not silently inherit Visium thresholds.
+  minimum_nuclei: null
+  minimum_reads: null
+  minimum_alignment_rate: null
+  minimum_saturation: null
+  minimum_negative_probe_margin: null
+
+normalization:
+  primary_method: Q3
+  sensitivity_methods:
+    - TMM
+  preserve_raw_counts: true
+
+inference:
+  replicate_level: donor
+  roi_nested_within_donor: true
+  report_donor_counts: true
+  report_effect_sizes: true
+  report_confidence_intervals: true
+  roi_only_p_values_allowed: false
+

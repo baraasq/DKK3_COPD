@@ -1,0 +1,22 @@
+name: dkk3_copd
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - anndata
+  - scanpy
+  - squidpy
+  - pandas
+  - numpy
+  - scipy
+  - scikit-learn
+  - statsmodels
+  - matplotlib
+  - seaborn
+  - python-igraph
+  - leidenalg
+  - h5py
+  - pyarrow
+  - pip
+

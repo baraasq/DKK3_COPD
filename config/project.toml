@@ -1,0 +1,50 @@
+[project]
+name = "DKK3 COPD revisit"
+gene = "DKK3"
+primary_dataset = "GSE292993"
+disease_label = "COPD"
+control_labels = ["Control", "Healthy", "Non-COPD", "NoCLD"]
+
+[paths]
+scrna_h5ad = "data/external/atlas_full.h5ad"
+scrinshot_zip = "data/external/COPD maps and data.zip"
+healthy_spatial_input = "data/external/lung.tar.gz"
+geomx_dcc_dir = "data/raw/gse292993/dcc"
+geomx_pkc_dir = "data/raw/gse292993/pkc"
+geomx_metadata_dir = "data/raw/gse292993/geo_metadata"
+geomx_processed_dir = "data/processed/gse292993"
+results_dir = "results"
+
+[metadata]
+sample_candidates = ["sampleID", "sample", "donor", "participant", "patient"]
+condition_candidates = ["diagnosis", "condition", "Disease", "disease"]
+study_candidates = ["study", "Study", "dataset", "cohort"]
+cell_type_candidates = [
+  "cell subtype",
+  "cell_subtype",
+  "cell type",
+  "cell_type",
+  "celltype",
+  "annotation",
+]
+
+[scrna]
+counts_layer = "counts"
+expression_layer = "log1p"
+primary_same_study = true
+minimum_cells_per_sample_cell_type = [5, 10, 15]
+primary_minimum_cells = 10
+
+[scrinshot]
+neighbors_per_cell = 20
+minimum_neighborhood_size = 50
+leiden_resolution = 1.0
+coordinate_columns = ["X", "Y"]
+section_candidates = ["Sample", "sample", "roi", "section"]
+donor_candidates = ["Donor", "donor", "patient", "participant"]
+condition_candidates = ["Disease", "disease", "condition", "diagnosis"]
+cell_type_candidates = ["cellsubtype", "celltype", "cellclass"]
+
+[healthy_spatial]
+matrix_name = "filtered_feature_bc_matrix.h5"
+source_doi = "10.17632/4w6krnywhn.1"
