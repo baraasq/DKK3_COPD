@@ -103,7 +103,9 @@ not delete or overwrite existing data.
 
 ## Immediate workflow
 
-1. Download and checksum the GSE292993 GEO files.
+1. Download the public deposits with
+   `scripts/01_download/download_all_deposits.bash`; inspect `sra-info` before
+   authorizing the much larger PRJNA1282758 FASTQ conversion.
 2. build donor-, slide-, segment-, ROI-, compartment-, and diagnosis-level
    metadata.
 3. Audit the DCC files and WTA panel before filtering.
@@ -120,4 +122,3 @@ not delete or overwrite existing data.
 The original top-level `scripts/00_*` through `scripts/03_*` audit Firsova
 SCRINSHOT, COPD scRNA, and healthy Visium/RRST inputs. They are retained for
 the secondary validation track and are not the GSE292993 primary pipeline.
-

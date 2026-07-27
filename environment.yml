@@ -18,5 +18,6 @@ dependencies:
   - leidenalg
   - h5py
   - pyarrow
+  - sra-tools
+  - pigz
   - pip
-

@@ -1,5 +1,8 @@
 accession	resource_role	assay	status	local_path	source_url	notes
 GSE292993	primary_spatial	GeoMx_WTA	pending	data/raw/gse292993	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE292993	DKK3-measuring COPD spatial dataset
+GSE237120	spatial_validation	GeoMx_WTA	pending	data/raw/downloads/geo/GSE237120	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE237120	COPD lymphoid-follicle GeoMx dataset
+GSE302339	scrna_reference	10x_scRNA_processed	pending	data/raw/downloads/geo/GSE302339	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE302339	Cell Ranger processed count matrices
+PRJNA1282758	scrna_reference_raw	10x_scRNA_FASTQ	optional	data/raw/downloads/sra/PRJNA1282758	https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1282758	Raw SRA reads; large download requiring explicit confirmation
+16341197	analysis_code	source_code	pending	data/raw/downloads/zenodo/16341197	https://doi.org/10.5281/zenodo.16341197	Published analysis code with Zenodo checksums
 GSE313006	cell_resolved_validation	Xenium_480_gene	optional	data/external/spatial_validation/gse313006	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE313006	DKK3 absent; useful for pneumocyte-fibroblast neighborhoods
 S-BSST2188	cell_resolved_validation	SCRINSHOT	optional	data/external/spatial_validation/s-bsst2188	https://www.ebi.ac.uk/biostudies/studies/S-BSST2188	DKK3 absent; COPD neighborhood validation
-
