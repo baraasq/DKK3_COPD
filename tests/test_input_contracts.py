@@ -180,8 +180,8 @@ class InputContractTests(unittest.TestCase):
                 ]
             )
             with tarfile.open(tar_path, mode="w") as archive:
-                payload = dcc_text.encode("utf-8")
-                info = tarfile.TarInfo("nested/DSP-TEST-A01.dcc")
+                payload = gzip.compress(dcc_text.encode("utf-8"))
+                info = tarfile.TarInfo("nested/DSP-TEST-A01.dcc.gz")
                 info.size = len(payload)
                 archive.addfile(info, io.BytesIO(payload))
 
@@ -191,6 +191,7 @@ class InputContractTests(unittest.TestCase):
         self.assertTrue(pkc["gene_present"])
         self.assertEqual(dcc["dcc_count"], 1)
         self.assertEqual(dcc["dccs_with_gene"], 1)
+        self.assertEqual(dcc["raw_tar_extension_counts"][".dcc.gz"], 1)
         self.assertEqual(rows[0]["roi_id_guess"], "DSP-TEST-A01")
         self.assertTrue(rows[0]["contains_negative_probe_text"])
 

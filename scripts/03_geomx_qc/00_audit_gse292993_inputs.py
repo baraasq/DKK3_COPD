@@ -50,6 +50,36 @@ def text_has_gene(line: str, gene: str) -> bool:
     return re.search(rf"(^|[^A-Za-z0-9_]){re.escape(gene)}([^A-Za-z0-9_]|$)", line, re.I) is not None
 
 
+def is_dcc_name(name: str) -> bool:
+    folded = name.casefold()
+    return folded.endswith(".dcc") or folded.endswith(".dcc.gz")
+
+
+def dcc_id_from_name(name: str) -> str:
+    filename = Path(name).name
+    for suffix in (".dcc.gz", ".DCC.gz", ".dcc", ".DCC"):
+        if filename.endswith(suffix):
+            return filename[: -len(suffix)]
+    return Path(filename).stem
+
+
+def member_extension(name: str) -> str:
+    filename = Path(name).name.casefold()
+    if filename.endswith(".dcc.gz"):
+        return ".dcc.gz"
+    return "".join(Path(filename).suffixes) or "<none>"
+
+
+def dcc_text_stream(stream: BinaryIO, name: str):
+    if name.casefold().endswith(".gz"):
+        return io.TextIOWrapper(
+            gzip.GzipFile(fileobj=stream),
+            encoding="utf-8",
+            errors="replace",
+        )
+    return io.TextIOWrapper(stream, encoding="utf-8", errors="replace")
+
+
 def inspect_pkc(path: Path | None, gene: str) -> dict:
     result = {
         "path": str(path) if path else None,
@@ -92,14 +122,28 @@ def tar_dcc_members(path: Path) -> list[tarfile.TarInfo]:
         return [
             member
             for member in archive.getmembers()
-            if member.isfile() and member.name.casefold().endswith(".dcc")
+            if member.isfile() and is_dcc_name(member.name)
         ]
+
+
+def summarize_tar_members(path: Path) -> dict:
+    with tarfile.open(path) as archive:
+        file_members = [member for member in archive.getmembers() if member.isfile()]
+    extension_counts: dict[str, int] = {}
+    for member in file_members:
+        extension = member_extension(member.name)
+        extension_counts[extension] = extension_counts.get(extension, 0) + 1
+    return {
+        "file_count": len(file_members),
+        "extension_counts": dict(sorted(extension_counts.items())),
+        "first_files": [member.name for member in file_members[:10]],
+    }
 
 
 def iter_dcc_from_tar(path: Path) -> Iterable[DccPayload]:
     with tarfile.open(path) as archive:
         for member in archive.getmembers():
-            if not member.isfile() or not member.name.casefold().endswith(".dcc"):
+            if not member.isfile() or not is_dcc_name(member.name):
                 continue
             stream = archive.extractfile(member)
             if stream is None:
@@ -109,7 +153,8 @@ def iter_dcc_from_tar(path: Path) -> Iterable[DccPayload]:
 
 
 def iter_dcc_from_dir(path: Path) -> Iterable[DccPayload]:
-    for dcc_path in sorted(path.rglob("*.dcc")):
+    dcc_paths = sorted([*path.rglob("*.dcc"), *path.rglob("*.dcc.gz")])
+    for dcc_path in dcc_paths:
         with dcc_path.open("rb") as stream:
             yield DccPayload(str(dcc_path.relative_to(path)), dcc_path.stat().st_size, stream)
 
@@ -122,7 +167,7 @@ def inspect_dcc_payload(payload: DccPayload, gene: str) -> dict:
     contains_negative = False
     contains_no_template = False
 
-    wrapper = io.TextIOWrapper(payload.stream, encoding="utf-8", errors="replace")
+    wrapper = dcc_text_stream(payload.stream, payload.name)
     for line in wrapper:
         line_count += 1
         stripped = line.strip()
@@ -140,7 +185,7 @@ def inspect_dcc_payload(payload: DccPayload, gene: str) -> dict:
     return {
         "dcc_member": payload.name,
         "dcc_filename": filename,
-        "roi_id_guess": Path(filename).stem,
+        "roi_id_guess": dcc_id_from_name(filename),
         "size_bytes": payload.size_bytes,
         "line_count": line_count,
         "gene_present": gene_line_count > 0,
@@ -162,17 +207,21 @@ def inspect_dcc_inputs(raw_tar: Path | None, dcc_dir: Path, gene: str) -> tuple[
 
     if raw_tar and raw_tar.exists():
         members = tar_dcc_members(raw_tar)
+        tar_summary = summarize_tar_members(raw_tar)
         result.update(
             source="tar",
             status="ok",
             raw_tar_size_bytes=raw_tar.stat().st_size,
+            raw_tar_file_count=tar_summary["file_count"],
+            raw_tar_extension_counts=tar_summary["extension_counts"],
+            raw_tar_first_files=tar_summary["first_files"],
             dcc_count=len(members),
             first_dcc_members=[member.name for member in members[:10]],
         )
         for payload in iter_dcc_from_tar(raw_tar):
             rows.append(inspect_dcc_payload(payload, gene))
     elif dcc_dir.exists():
-        dcc_files = sorted(dcc_dir.rglob("*.dcc"))
+        dcc_files = sorted([*dcc_dir.rglob("*.dcc"), *dcc_dir.rglob("*.dcc.gz")])
         result.update(
             source="directory",
             status="ok" if dcc_files else "missing",
@@ -204,7 +253,7 @@ def copy_geo_inputs(raw_tar: Path | None, pkc_path: Path | None, config: dict) -
         dcc_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(raw_tar) as archive:
             for member in archive.getmembers():
-                if not member.isfile() or not member.name.casefold().endswith(".dcc"):
+                if not member.isfile() or not is_dcc_name(member.name):
                     continue
                 target = dcc_dir / Path(member.name).name
                 stream = archive.extractfile(member)
