@@ -90,3 +90,19 @@ This writes:
 The profile checks that all DCC filenames can be matched back to GEO sample
 records and captures a preview of the DCC structure before downstream GeoMx
 object construction.
+
+Finally extract per-ROI DCC QC metrics and PKC code mappings:
+
+```bash
+python scripts/03_geomx_qc/02_extract_gse292993_dcc_qc.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_dcc_qc_summary.json`
+- `results/tables/gse292993_pkc_code_map.csv`
+- `results/tables/gse292993_dcc_qc_metrics.csv`
+
+The DCC QC extraction parses `Scan_Attributes`, `NGS_Processing_Attributes`,
+and `<Code_Summary>` from each `.dcc.gz` file. `DKK3` counts are reported only
+when the PKC file resolves one or more RTS code IDs for `DKK3`.

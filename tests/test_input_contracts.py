@@ -4,6 +4,7 @@ import csv
 import gzip
 import importlib.util
 import io
+import json
 import sys
 import tarfile
 import tempfile
@@ -54,6 +55,17 @@ def load_geomx_profile_module():
     spec = importlib.util.spec_from_file_location("geomx_profile", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("Could not load GeoMx profile script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_geomx_dcc_qc_module():
+    path = ROOT / "scripts" / "03_geomx_qc" / "02_extract_gse292993_dcc_qc.py"
+    spec = importlib.util.spec_from_file_location("geomx_dcc_qc", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx DCC QC script.")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -241,6 +253,63 @@ class InputContractTests(unittest.TestCase):
         self.assertTrue(merged[0]["metadata_matched"])
         self.assertEqual(merged[0]["characteristics_compartment"], "parenchyma")
         self.assertEqual(profile["key_values"]["Sample_ID"], "DSP-1001660011972-E-A01")
+
+    def test_geomx_dcc_qc_resolves_pkc_codes_and_counts(self):
+        dcc_qc_module = load_geomx_dcc_qc_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pkc_path = root / "panel.pkc.gz"
+            pkc = {
+                "Targets": [
+                    {
+                        "DisplayName": "DKK3",
+                        "CodeClass": "Endogenous",
+                        "RTS_ID": "RTS0020886",
+                    },
+                    {
+                        "DisplayName": "ACTB",
+                        "CodeClass": "Housekeeping",
+                        "RTS_ID": "RTS0020894",
+                    },
+                ]
+            }
+            with gzip.open(pkc_path, "wt", encoding="utf-8", newline="\n") as handle:
+                json.dump(pkc, handle)
+
+            dcc_path = root / "GSM8872219_DSP-1001660011972-E-A01.dcc.gz"
+            dcc_text = "\n".join(
+                [
+                    "<Scan_Attributes>",
+                    "ID,DSP-1001660011972-E-A01",
+                    "Plate_ID,1001660011972",
+                    "Well,A01",
+                    "</Scan_Attributes>",
+                    "<NGS_Processing_Attributes>",
+                    "Raw,10069",
+                    "Aligned,5995",
+                    "umiQ30,0.9951",
+                    "</NGS_Processing_Attributes>",
+                    "<Code_Summary>",
+                    "RTS0020886,17",
+                    "RTS0020894,22",
+                    "</Code_Summary>",
+                    "",
+                ]
+            )
+            with gzip.open(dcc_path, "wt", encoding="utf-8", newline="\n") as handle:
+                handle.write(dcc_text)
+
+            pkc_summary, pkc_rows = dcc_qc_module.parse_pkc_code_map(pkc_path, "DKK3")
+            gene_codes = {
+                row["code_id"] for row in pkc_rows if row["is_primary_gene"]
+            }
+            row, code_counts = dcc_qc_module.parse_dcc(dcc_path, gene_codes)
+
+        self.assertEqual(pkc_summary["gene_code_count"], 1)
+        self.assertEqual(gene_codes, {"RTS0020886"})
+        self.assertEqual(code_counts["RTS0020886"], 17)
+        self.assertEqual(row["primary_gene_counts"], 17)
+        self.assertEqual(row["aligned_reads"], 5995)
 
 
 if __name__ == "__main__":
