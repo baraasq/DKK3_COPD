@@ -74,3 +74,19 @@ This writes:
 The audit checks that the WTA PKC file is readable, `DKK3` is present in the
 panel, DCC files are discoverable from `GSE292993_RAW.tar` or
 `data/raw/gse292993/dcc`, and each DCC can be scanned for gene/control text.
+
+Then profile the copied DCC files and GEO sample metadata:
+
+```bash
+python scripts/03_geomx_qc/01_profile_gse292993_objects.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_object_profile.json`
+- `results/tables/gse292993_geo_sample_metadata.csv`
+- `results/tables/gse292993_roi_metadata_initial.csv`
+
+The profile checks that all DCC filenames can be matched back to GEO sample
+records and captures a preview of the DCC structure before downstream GeoMx
+object construction.

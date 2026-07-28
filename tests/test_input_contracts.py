@@ -49,6 +49,17 @@ def load_geomx_audit_module():
     return module
 
 
+def load_geomx_profile_module():
+    path = ROOT / "scripts" / "03_geomx_qc" / "01_profile_gse292993_objects.py"
+    spec = importlib.util.spec_from_file_location("geomx_profile", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx profile script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def csv_text(fieldnames: list[str], rows: list[dict]) -> str:
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fieldnames)
@@ -194,6 +205,42 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(dcc["raw_tar_extension_counts"][".dcc.gz"], 1)
         self.assertEqual(rows[0]["roi_id_guess"], "DSP-TEST-A01")
         self.assertTrue(rows[0]["contains_negative_probe_text"])
+
+    def test_geomx_profile_parses_soft_and_merges_gsm(self):
+        profile_module = load_geomx_profile_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            soft_path = root / "GSE292993_family.soft.gz"
+            soft_text = "\n".join(
+                [
+                    "^SAMPLE = GSM8872219",
+                    "!Sample_title = DSP-1001660011972-E-A01",
+                    "!Sample_source_name_ch1 = lung",
+                    "!Sample_characteristics_ch1 = diagnosis: COPD",
+                    "!Sample_characteristics_ch1 = compartment: parenchyma",
+                    "",
+                ]
+            )
+            with gzip.open(soft_path, "wt", encoding="utf-8", newline="\n") as handle:
+                handle.write(soft_text)
+
+            dcc_path = root / "GSM8872219_DSP-1001660011972-E-A01.dcc.gz"
+            with gzip.open(dcc_path, "wt", encoding="utf-8", newline="\n") as handle:
+                handle.write("[FileHeader]\nSample_ID\tDSP-1001660011972-E-A01\n")
+
+            geo_rows = profile_module.parse_soft_samples(soft_path)
+            dcc_row = {
+                "dcc_filename": dcc_path.name,
+                "dcc_id": profile_module.dcc_id_from_name(dcc_path.name),
+                "geo_accession": profile_module.gsm_from_name(dcc_path.name),
+            }
+            merged = profile_module.merge_dcc_and_geo([dcc_row], geo_rows)
+            profile = profile_module.profile_dcc(dcc_path)
+
+        self.assertEqual(geo_rows[0]["characteristics_diagnosis"], "COPD")
+        self.assertTrue(merged[0]["metadata_matched"])
+        self.assertEqual(merged[0]["characteristics_compartment"], "parenchyma")
+        self.assertEqual(profile["key_values"]["Sample_ID"], "DSP-1001660011972-E-A01")
 
 
 if __name__ == "__main__":
