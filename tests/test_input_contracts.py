@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import importlib.util
 import io
 import sys
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -32,6 +34,17 @@ def load_spatial_audit_module():
     if spec is None or spec.loader is None:
         raise RuntimeError("Could not load healthy spatial audit script.")
     module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_geomx_audit_module():
+    path = ROOT / "scripts" / "03_geomx_qc" / "00_audit_gse292993_inputs.py"
+    spec = importlib.util.spec_from_file_location("geomx_audit", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx audit script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -145,6 +158,41 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(result["sections_by_condition"]["Control"], 1)
         self.assertIn("COL1A2", genes)
         self.assertFalse(result["direct_spatial_gene_analysis_supported"])
+
+    def test_geomx_audit_finds_pkc_and_dcc_dkk3(self):
+        geomx_module = load_geomx_audit_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pkc_path = root / "panel.pkc.gz"
+            with gzip.open(pkc_path, "wt", encoding="utf-8", newline="\n") as handle:
+                handle.write("TargetName,CodeClass\n")
+                handle.write("DKK3,Endogenous\n")
+                handle.write("ACTB,Housekeeping\n")
+
+            tar_path = root / "GSE292993_RAW.tar"
+            dcc_text = "\n".join(
+                [
+                    "Code_Summary",
+                    "TargetName,CodeClass,Count",
+                    "DKK3,Endogenous,17",
+                    "Negative1,Negative,2",
+                    "",
+                ]
+            )
+            with tarfile.open(tar_path, mode="w") as archive:
+                payload = dcc_text.encode("utf-8")
+                info = tarfile.TarInfo("nested/DSP-TEST-A01.dcc")
+                info.size = len(payload)
+                archive.addfile(info, io.BytesIO(payload))
+
+            pkc = geomx_module.inspect_pkc(pkc_path, "DKK3")
+            dcc, rows = geomx_module.inspect_dcc_inputs(tar_path, root / "dcc", "DKK3")
+
+        self.assertTrue(pkc["gene_present"])
+        self.assertEqual(dcc["dcc_count"], 1)
+        self.assertEqual(dcc["dccs_with_gene"], 1)
+        self.assertEqual(rows[0]["roi_id_guess"], "DSP-TEST-A01")
+        self.assertTrue(rows[0]["contains_negative_probe_text"])
 
 
 if __name__ == "__main__":

@@ -18,11 +18,13 @@ THREADS="${THREADS:-8}"
 SRA_PROJECT="PRJNA1282758"
 ZENODO_RECORD="16341197"
 GEO_ACCESSIONS=(GSE302339 GSE237120 GSE292993)
+KEEP_SRA_ARCHIVE="${KEEP_SRA_ARCHIVE:-YES}"
 
 DOWNLOAD_ROOT="${PROJECT_ROOT}/data/raw/downloads"
 GEO_ROOT="${DOWNLOAD_ROOT}/geo"
 SRA_ROOT="${DOWNLOAD_ROOT}/sra/${SRA_PROJECT}"
 ZENODO_ROOT="${DOWNLOAD_ROOT}/zenodo/${ZENODO_RECORD}"
+SRA_TEMP_ROOT="${SRA_TEMP_ROOT:-${SRA_ROOT}/tmp}"
 
 usage() {
     cat <<'EOF'
@@ -43,6 +45,15 @@ TARGET:
 Large-download safety:
   The "sra" and "all" targets require CONFIRM_SRA_FASTQ=YES.
 
+Useful environment variables:
+  THREADS=16                    Number of fasterq-dump and pigz threads.
+  SRA_TEMP_ROOT=/scratch/path    Put fasterq-dump temporary files on a larger
+                                 filesystem. Defaults inside data/raw/downloads.
+  KEEP_SRA_ARCHIVE=NO            Remove each .sra archive after its gzipped
+                                 FASTQ files and done marker are written.
+  CLEAN_FAILED_TEMP=YES          Remove the failed run's temp folder and partial
+                                 FASTQs if fasterq-dump exits with an error.
+
 Examples:
   bash scripts/01_download/download_all_deposits.bash metadata
   THREADS=16 CONFIRM_SRA_FASTQ=YES \
@@ -61,6 +72,13 @@ die() {
 
 require_command() {
     command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+}
+
+require_yes_no() {
+    local name="$1"
+    local value="$2"
+    [[ "${value}" == "YES" || "${value}" == "NO" ]] || die \
+        "${name} must be YES or NO, got: ${value}"
 }
 
 download_file() {
@@ -347,13 +365,15 @@ download_sra_fastq() {
     local runlist="${SRA_ROOT}/metadata/run_accessions.txt"
     local archive_root="${SRA_ROOT}/archive"
     local fastq_root="${SRA_ROOT}/fastq"
-    local temp_root="${SRA_ROOT}/tmp"
+    local temp_root="${SRA_TEMP_ROOT}"
     local done_root="${SRA_ROOT}/done"
     local run
     local archive
     local fastq
     local -a fastqs
 
+    require_yes_no "KEEP_SRA_ARCHIVE" "${KEEP_SRA_ARCHIVE}"
+    require_yes_no "CLEAN_FAILED_TEMP" "${CLEAN_FAILED_TEMP:-NO}"
     mkdir -p -- "${archive_root}" "${fastq_root}" "${temp_root}" "${done_root}"
 
     while IFS= read -r run; do
@@ -371,12 +391,19 @@ download_sra_fastq() {
 
         log "Converting ${run} to FASTQ with ${THREADS} threads"
         mkdir -p -- "${temp_root}/${run}"
-        fasterq-dump "${archive}" \
-            --split-files \
-            --force \
-            --threads "${THREADS}" \
-            --temp "${temp_root}/${run}" \
-            --outdir "${fastq_root}"
+        if ! fasterq-dump "${archive}" \
+                --split-files \
+                --force \
+                --threads "${THREADS}" \
+                --temp "${temp_root}/${run}" \
+                --outdir "${fastq_root}"; then
+            if [[ "${CLEAN_FAILED_TEMP:-NO}" == "YES" ]]; then
+                log "Cleaning failed temporary files for ${run}"
+                rm -rf -- "${temp_root:?}/${run}"
+                rm -f -- "${fastq_root}/${run}"*.fastq "${fastq_root}/${run}"*.fastq.gz
+            fi
+            die "fasterq-dump failed for ${run}"
+        fi
 
         shopt -s nullglob
         fastqs=("${fastq_root}/${run}"*.fastq)
@@ -390,6 +417,10 @@ download_sra_fastq() {
         fi
         printf 'completed_utc\t%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
             > "${done_root}/${run}.complete"
+        if [[ "${KEEP_SRA_ARCHIVE}" == "NO" ]]; then
+            log "Removing SRA archive for completed run ${run}"
+            rm -rf -- "${archive_root:?}/${run}"
+        fi
         log "Completed ${run}"
     done < "${runlist}"
 }

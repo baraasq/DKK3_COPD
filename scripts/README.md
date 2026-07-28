@@ -33,6 +33,44 @@ THREADS=16 CONFIRM_SRA_FASTQ=YES \
   bash scripts/01_download/download_all_deposits.bash sra
 ```
 
+For quota-limited filesystems, put the `fasterq-dump` temporary directory on a
+larger scratch volume and remove each `.sra` archive after its gzipped FASTQ
+files have been written:
+
+```bash
+THREADS=16 CONFIRM_SRA_FASTQ=YES \
+  SRA_TEMP_ROOT=/scratch/baraa/COPD_public_sra_tmp \
+  KEEP_SRA_ARCHIVE=NO \
+  bash scripts/01_download/download_all_deposits.bash sra
+```
+
+If `fasterq-dump` fails with `disk-limit exceeded`, remove the failed run's
+temporary files and partial FASTQs before rerunning:
+
+```bash
+rm -rf data/raw/downloads/sra/PRJNA1282758/tmp/SRR34233583
+rm -f data/raw/downloads/sra/PRJNA1282758/fastq/SRR34233583*.fastq \
+      data/raw/downloads/sra/PRJNA1282758/fastq/SRR34233583*.fastq.gz
+```
+
 The downloader resumes partial HTTP files, skips completed SRA runs, retains
 all read files emitted by `fasterq-dump --split-files`, and verifies the
 checksums published by Zenodo.
+
+## GSE292993 GeoMx input audit
+
+After the GEO files are downloaded, audit the PKC panel and DCC files before
+building downstream GeoMx objects:
+
+```bash
+python scripts/03_geomx_qc/00_audit_gse292993_inputs.py --copy-geo-inputs --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_geomx_input_audit.json`
+- `results/tables/gse292993_dcc_input_manifest.csv`
+
+The audit checks that the WTA PKC file is readable, `DKK3` is present in the
+panel, DCC files are discoverable from `GSE292993_RAW.tar` or
+`data/raw/gse292993/dcc`, and each DCC can be scanned for gene/control text.
