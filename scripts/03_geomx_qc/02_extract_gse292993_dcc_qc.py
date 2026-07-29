@@ -220,7 +220,42 @@ def parse_numeric(value: str | None) -> int | float | str | None:
     return number
 
 
-def parse_dcc(path: Path, gene_codes: set[str]) -> tuple[dict, dict[str, int]]:
+def numeric_float(value: int | float | str | None) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def safe_fraction(numerator: int | float | str | None, denominator: int | float | str | None) -> float | None:
+    top = numeric_float(numerator)
+    bottom = numeric_float(denominator)
+    if top is None or bottom is None or bottom == 0:
+        return None
+    return top / bottom
+
+
+def summarize_code_subset(code_counts: dict[str, int], codes: set[str], prefix: str) -> dict:
+    values = [count for code, count in code_counts.items() if code in codes]
+    if not values:
+        return {
+            f"{prefix}_n_codes": 0,
+            f"{prefix}_total_counts": 0,
+            f"{prefix}_mean_counts": None,
+            f"{prefix}_max_counts": None,
+        }
+    return {
+        f"{prefix}_n_codes": len(values),
+        f"{prefix}_total_counts": sum(values),
+        f"{prefix}_mean_counts": sum(values) / len(values),
+        f"{prefix}_max_counts": max(values),
+    }
+
+
+def parse_dcc(
+    path: Path,
+    gene_codes: set[str],
+    negative_codes: set[str] | None = None,
+) -> tuple[dict, dict[str, int]]:
     attrs: dict[str, str] = {}
     code_counts: dict[str, int] = {}
     section = None
@@ -252,6 +287,13 @@ def parse_dcc(path: Path, gene_codes: set[str]) -> tuple[dict, dict[str, int]]:
 
     total_counts = sum(code_counts.values())
     gene_counts = sum(count for code, count in code_counts.items() if code in gene_codes)
+    raw_reads = parse_numeric(attrs.get("Raw"))
+    trimmed_reads = parse_numeric(attrs.get("Trimmed"))
+    stitched_reads = parse_numeric(attrs.get("Stitched"))
+    aligned_reads = parse_numeric(attrs.get("Aligned"))
+    negative_summary = summarize_code_subset(
+        code_counts, negative_codes or set(), "negative_probe"
+    )
     row = {
         "geo_accession": gsm_from_name(path.name),
         "dcc_filename": path.name,
@@ -260,15 +302,21 @@ def parse_dcc(path: Path, gene_codes: set[str]) -> tuple[dict, dict[str, int]]:
         "plate_id": attrs.get("Plate_ID"),
         "well": attrs.get("Well"),
         "seq_set_id": attrs.get("SeqSetId"),
-        "raw_reads": parse_numeric(attrs.get("Raw")),
-        "trimmed_reads": parse_numeric(attrs.get("Trimmed")),
-        "stitched_reads": parse_numeric(attrs.get("Stitched")),
-        "aligned_reads": parse_numeric(attrs.get("Aligned")),
+        "raw_reads": raw_reads,
+        "trimmed_reads": trimmed_reads,
+        "stitched_reads": stitched_reads,
+        "aligned_reads": aligned_reads,
+        "trimmed_fraction": safe_fraction(trimmed_reads, raw_reads),
+        "stitched_fraction": safe_fraction(stitched_reads, trimmed_reads),
+        "aligned_fraction_raw": safe_fraction(aligned_reads, raw_reads),
+        "aligned_fraction_trimmed": safe_fraction(aligned_reads, trimmed_reads),
+        "aligned_fraction_stitched": safe_fraction(aligned_reads, stitched_reads),
         "umi_q30": parse_numeric(attrs.get("umiQ30")),
         "rts_q30": parse_numeric(attrs.get("rtsQ30")),
         "n_code_counts": len(code_counts),
         "total_code_counts": total_counts,
         "primary_gene_counts": gene_counts,
+        **negative_summary,
     }
     return row, code_counts
 
@@ -307,12 +355,23 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         "plate_id",
         "well",
         "raw_reads",
+        "trimmed_reads",
+        "stitched_reads",
         "aligned_reads",
+        "trimmed_fraction",
+        "stitched_fraction",
+        "aligned_fraction_raw",
+        "aligned_fraction_trimmed",
+        "aligned_fraction_stitched",
         "umi_q30",
         "rts_q30",
         "n_code_counts",
         "total_code_counts",
         "primary_gene_counts",
+        "negative_probe_n_codes",
+        "negative_probe_total_counts",
+        "negative_probe_mean_counts",
+        "negative_probe_max_counts",
     ]
     ordered = [field for field in preferred if field in fieldnames]
     ordered.extend(field for field in fieldnames if field not in ordered)
@@ -339,11 +398,20 @@ def main() -> int:
         for row in pkc_rows
         if row.get("is_primary_gene") and row.get("code_id")
     }
+    negative_codes = {
+        row["code_id"]
+        for row in pkc_rows
+        if row.get("code_id")
+        and (
+            "negative" in str(row.get("code_class") or "").casefold()
+            or "negative" in str(row.get("target") or "").casefold()
+        )
+    }
 
     qc_rows: list[dict] = []
     n_codes: Counter[int] = Counter()
     for path in paths:
-        row, code_counts = parse_dcc(path, gene_codes)
+        row, code_counts = parse_dcc(path, gene_codes, negative_codes)
         qc_rows.append(row)
         n_codes[len(code_counts)] += 1
 
@@ -353,6 +421,8 @@ def main() -> int:
         "pkc": pkc_summary,
         "primary_gene": gene,
         "primary_gene_codes_used": sorted(gene_codes),
+        "negative_probe_codes_used": sorted(negative_codes),
+        "negative_probe_code_count": len(negative_codes),
         "dccs_with_primary_gene_counts_gt0": sum(
             1 for row in qc_rows if row["primary_gene_counts"] > 0
         ),
@@ -364,11 +434,20 @@ def main() -> int:
                 "trimmed_reads",
                 "stitched_reads",
                 "aligned_reads",
+                "trimmed_fraction",
+                "stitched_fraction",
+                "aligned_fraction_raw",
+                "aligned_fraction_trimmed",
+                "aligned_fraction_stitched",
                 "umi_q30",
                 "rts_q30",
                 "n_code_counts",
                 "total_code_counts",
                 "primary_gene_counts",
+                "negative_probe_n_codes",
+                "negative_probe_total_counts",
+                "negative_probe_mean_counts",
+                "negative_probe_max_counts",
             )
         },
     }

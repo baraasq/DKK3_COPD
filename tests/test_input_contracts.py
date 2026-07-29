@@ -72,6 +72,17 @@ def load_geomx_dcc_qc_module():
     return module
 
 
+def load_geomx_roi_qc_module():
+    path = ROOT / "scripts" / "03_geomx_qc" / "03_flag_gse292993_roi_qc.py"
+    spec = importlib.util.spec_from_file_location("geomx_roi_qc", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx ROI QC script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def csv_text(fieldnames: list[str], rows: list[dict]) -> str:
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fieldnames)
@@ -286,6 +297,8 @@ class InputContractTests(unittest.TestCase):
                     "</Scan_Attributes>",
                     "<NGS_Processing_Attributes>",
                     "Raw,10069",
+                    "Trimmed,9905",
+                    "Stitched,6315",
                     "Aligned,5995",
                     "umiQ30,0.9951",
                     "</NGS_Processing_Attributes>",
@@ -310,6 +323,47 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(code_counts["RTS0020886"], 17)
         self.assertEqual(row["primary_gene_counts"], 17)
         self.assertEqual(row["aligned_reads"], 5995)
+        self.assertAlmostEqual(row["trimmed_fraction"], 9905 / 10069)
+        self.assertAlmostEqual(row["stitched_fraction"], 6315 / 9905)
+        self.assertAlmostEqual(row["aligned_fraction_stitched"], 5995 / 6315)
+
+    def test_geomx_roi_qc_flags_low_quality_rows(self):
+        roi_qc_module = load_geomx_roi_qc_module()
+
+        class Args:
+            min_aligned_reads = 100000
+            min_code_counts = 10000
+            min_total_code_counts = 10000
+            min_trimmed_fraction = 0.90
+            min_stitched_fraction = 0.80
+            min_aligned_fraction_stitched = 0.80
+            min_umi_q30 = 0.98
+            min_rts_q30 = 0.98
+
+        pass_row = {
+            "metadata_matched": "True",
+            "qc_metrics_matched": "True",
+            "aligned_reads": "200000",
+            "n_code_counts": "18000",
+            "total_code_counts": "50000",
+            "trimmed_fraction": "0.98",
+            "stitched_fraction": "0.90",
+            "aligned_fraction_stitched": "0.95",
+            "umi_q30": "0.995",
+            "rts_q30": "0.994",
+        }
+        fail_row = dict(pass_row)
+        fail_row["aligned_reads"] = "1"
+        fail_row["n_code_counts"] = "1"
+
+        include, reasons = roi_qc_module.qc_flags(pass_row, Args)
+        fail_include, fail_reasons = roi_qc_module.qc_flags(fail_row, Args)
+
+        self.assertTrue(include)
+        self.assertFalse(reasons)
+        self.assertFalse(fail_include)
+        self.assertIn("aligned_reads_below_min", fail_reasons)
+        self.assertIn("n_code_counts_below_min", fail_reasons)
 
 
 if __name__ == "__main__":

@@ -104,5 +104,26 @@ This writes:
 - `results/tables/gse292993_dcc_qc_metrics.csv`
 
 The DCC QC extraction parses `Scan_Attributes`, `NGS_Processing_Attributes`,
-and `<Code_Summary>` from each `.dcc.gz` file. `DKK3` counts are reported only
-when the PKC file resolves one or more RTS code IDs for `DKK3`.
+and `<Code_Summary>` from each `.dcc.gz` file. It reports raw, trimmed,
+stitched, and aligned reads; trimmed, stitched, and aligned fractions; UMI/RTS
+Q30; total counts; detected code count; `DKK3` counts; and negative-probe
+summaries when the PKC labels negative-control RTS codes. `DKK3` counts are
+reported only when the PKC file resolves one or more RTS code IDs for `DKK3`.
+
+After extracting DCC QC metrics, merge them with GEO sample metadata and create
+conservative ROI-level QC flags:
+
+```bash
+python scripts/03_geomx_qc/03_flag_gse292993_roi_qc.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_roi_qc_flag_summary.json`
+- `results/tables/gse292993_roi_qc_flags.csv`
+
+The default thresholds are intentionally conservative and mainly remove obvious
+technical failures: at least 100,000 aligned reads, 10,000 detected code counts,
+10,000 total code counts, trimmed fraction of at least 0.90, stitched fraction
+of at least 0.80, aligned/stitched fraction of at least 0.80, and UMI/RTS Q30 of
+at least 0.98.
