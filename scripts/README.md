@@ -127,3 +127,19 @@ technical failures: at least 100,000 aligned reads, 10,000 detected code counts,
 10,000 total code counts, trimmed fraction of at least 0.90, stitched fraction
 of at least 0.80, aligned/stitched fraction of at least 0.80, and UMI/RTS Q30 of
 at least 0.98.
+
+After ROI QC, compute DKK3 detectability relative to negative-probe background:
+
+```bash
+python scripts/03_geomx_qc/04_compute_gse292993_dkk3_loq.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_dkk3_loq_summary.json`
+- `results/tables/gse292993_dkk3_loq_flags.csv`
+
+The LOQ step keeps two background calls side by side: a geometric negative-probe
+LOQ using `exp(mean(log(negative + 1)) + 2*sd(log(negative + 1))) - 1`, and an
+arithmetic `mean + 2*sd` call. Do not discard low-DKK3 ROIs automatically from
+expression modeling; use these flags to interpret detectability and sensitivity.

@@ -83,6 +83,17 @@ def load_geomx_roi_qc_module():
     return module
 
 
+def load_geomx_loq_module():
+    path = ROOT / "scripts" / "03_geomx_qc" / "04_compute_gse292993_dkk3_loq.py"
+    spec = importlib.util.spec_from_file_location("geomx_loq", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx LOQ script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def csv_text(fieldnames: list[str], rows: list[dict]) -> str:
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fieldnames)
@@ -367,6 +378,39 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(roi_qc_module.disease_group("COPD"), "COPD")
         self.assertEqual(roi_qc_module.disease_group("Non Smoker"), "Control")
         self.assertEqual(roi_qc_module.disease_group("Smoker"), "Control")
+
+    def test_geomx_loq_metrics_flags_background_detection(self):
+        loq_module = load_geomx_loq_module()
+        metrics = loq_module.loq_metrics(
+            [1, 2, 3, 4],
+            pseudocount=1.0,
+            sd_multiplier=2.0,
+        )
+        rows = [
+            {
+                "include_qc": "True",
+                "diagnosis_group": "COPD",
+                "compartment_guess": "parenchyma",
+                "dkk3_above_geometric_loq": True,
+                "dkk3_above_arithmetic_loq": False,
+            },
+            {
+                "include_qc": "False",
+                "diagnosis_group": "COPD",
+                "compartment_guess": "parenchyma",
+                "dkk3_above_geometric_loq": True,
+                "dkk3_above_arithmetic_loq": True,
+            },
+        ]
+        summary = loq_module.summarize_by_group(
+            rows, ["diagnosis_group", "compartment_guess"]
+        )
+
+        self.assertEqual(metrics["negative_probe_n"], 4)
+        self.assertGreater(metrics["dkk3_geometric_loq"], 0)
+        self.assertEqual(summary[0]["n_include_qc"], 1)
+        self.assertEqual(summary[0]["n_dkk3_above_geometric_loq"], 1)
+        self.assertEqual(summary[0]["n_dkk3_above_arithmetic_loq"], 0)
 
 
 if __name__ == "__main__":
