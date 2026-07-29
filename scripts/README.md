@@ -158,7 +158,9 @@ This writes:
 - `results/tables/gse292993_dkk3_roi_signal.csv`
 - `results/tables/gse292993_dkk3_primary_roi_by_group.csv`
 - `results/tables/gse292993_dkk3_donor_compartment_summary.csv`
+- `results/tables/gse292993_dkk3_donor_diagnosis_compartment_summary.csv`
 - `results/tables/gse292993_dkk3_donor_overall_summary.csv`
+- `results/tables/gse292993_dkk3_donor_diagnosis_overall_summary.csv`
 
 The primary summary keeps QC-passing ROIs with known COPD/control labels,
 airway/parenchyma/vessel compartments, and known donor IDs. ROI summaries are
@@ -181,3 +183,19 @@ compartment. The script also tests donor-level median CPM, median raw count, and
 above-LOQ fractions using permutation p-values and bootstrap confidence
 intervals. These are still unadjusted exploratory tests; treat them as the
 first donor-aware screen before fuller mixed or multivariable models.
+
+If COPD/control grouping disagrees with prior knowledge or appears sensitive to
+smoker controls, run the stratified donor-aware comparisons:
+
+```bash
+python scripts/05_dkk3/02_test_gse292993_dkk3_smoking_strata.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_dkk3_smoking_strata_effect_summary.json`
+- `results/tables/gse292993_dkk3_smoking_strata_effect_tests.csv`
+
+The default pairwise contrasts are `COPD` vs `Non Smoker`, `COPD` vs `Smoker`,
+and `Smoker` vs `Non Smoker` within each compartment, using the donor-level
+tables that preserve the raw GEO `characteristics_condition` labels.

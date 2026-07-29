@@ -117,6 +117,17 @@ def load_dkk3_effect_module():
     return module
 
 
+def load_dkk3_strata_module():
+    path = ROOT / "scripts" / "05_dkk3" / "02_test_gse292993_dkk3_smoking_strata.py"
+    spec = importlib.util.spec_from_file_location("dkk3_strata", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load DKK3 stratified effect script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def csv_text(fieldnames: list[str], rows: list[dict]) -> str:
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fieldnames)
@@ -475,7 +486,7 @@ class InputContractTests(unittest.TestCase):
         summary = dkk3_module.summarize_group(
             primary, ["diagnosis_group", "compartment_guess"]
         )
-        donor_counts = dkk3_module.donor_counts_by_diagnosis(primary)
+        donor_counts = dkk3_module.donor_counts_by_column(primary, "diagnosis_group")
 
         self.assertEqual(len(primary), 2)
         self.assertAlmostEqual(rows[0]["dkk3_cpm"], 10000)
@@ -531,6 +542,60 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(result["n_control_donors"], 2)
         self.assertEqual(result["mean_difference_copd_minus_control"], 2.0)
         self.assertIsNotNone(result["permutation_p_two_sided"])
+
+    def test_dkk3_strata_pairwise_comparison(self):
+        strata_module = load_dkk3_strata_module()
+        effects_module = load_dkk3_effect_module()
+        rng = random.Random(456)
+        rows = [
+            {
+                "donor_guess": "C1",
+                "diagnosis_guess": "COPD",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "4.0",
+            },
+            {
+                "donor_guess": "C2",
+                "diagnosis_guess": "COPD",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "5.0",
+            },
+            {
+                "donor_guess": "S1",
+                "diagnosis_guess": "Smoker",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "3.0",
+            },
+            {
+                "donor_guess": "N1",
+                "diagnosis_guess": "Non Smoker",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "1.0",
+            },
+            {
+                "donor_guess": "N2",
+                "diagnosis_guess": "Non Smoker",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "2.0",
+            },
+        ]
+        result = strata_module.test_pair_metric(
+            rows,
+            label_column="diagnosis_guess",
+            label_a="COPD",
+            label_b="Non Smoker",
+            compartment="parenchyma",
+            metric="median_log1p_dkk3_cpm",
+            permutations=100,
+            bootstraps=100,
+            rng=rng,
+            effects=effects_module,
+        )
+
+        self.assertEqual(strata_module.parse_pairs(None, ["COPD", "Non Smoker", "Smoker"])[0], ("COPD", "Non Smoker"))
+        self.assertEqual(result["n_label_a_donors"], 2)
+        self.assertEqual(result["n_label_b_donors"], 2)
+        self.assertEqual(result["mean_difference_label_a_minus_label_b"], 3.0)
 
 
 if __name__ == "__main__":

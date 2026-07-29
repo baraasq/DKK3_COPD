@@ -151,16 +151,16 @@ def primary_rows(rows: list[dict]) -> list[dict]:
     ]
 
 
-def donor_counts_by_diagnosis(rows: list[dict]) -> list[dict]:
+def donor_counts_by_column(rows: list[dict], column: str) -> list[dict]:
     pairs = {
-        (row["donor_guess"], row["diagnosis_group"])
+        (row["donor_guess"], row[column])
         for row in rows
-        if row.get("donor_guess") and row.get("diagnosis_group")
+        if row.get("donor_guess") and row.get(column)
     }
-    counts = Counter(diagnosis for _, diagnosis in pairs)
+    counts = Counter(label for _, label in pairs)
     return [
-        {"diagnosis_group": diagnosis, "n_donors": count}
-        for diagnosis, count in sorted(counts.items())
+        {column: label, "n_donors": count}
+        for label, count in sorted(counts.items())
     ]
 
 
@@ -183,7 +183,14 @@ def main() -> int:
     donor_compartment = summarize_group(
         primary, ["donor_guess", "diagnosis_group", "compartment_guess"]
     )
+    donor_diagnosis_compartment = summarize_group(
+        primary,
+        ["donor_guess", "diagnosis_guess", "diagnosis_group", "compartment_guess"],
+    )
     donor_overall = summarize_group(primary, ["donor_guess", "diagnosis_group"])
+    donor_diagnosis_overall = summarize_group(
+        primary, ["donor_guess", "diagnosis_guess", "diagnosis_group"]
+    )
 
     summary = {
         "dataset": config["project"]["primary_dataset"],
@@ -192,7 +199,12 @@ def main() -> int:
         "n_rois_primary": len(primary),
         "n_donors_primary": len({row["donor_guess"] for row in primary}),
         "primary_roi_counts_by_diagnosis_compartment": roi_by_group,
-        "primary_donor_counts_by_diagnosis": donor_counts_by_diagnosis(primary),
+        "primary_donor_counts_by_diagnosis_group": donor_counts_by_column(
+            primary, "diagnosis_group"
+        ),
+        "primary_donor_counts_by_diagnosis_guess": donor_counts_by_column(
+            primary, "diagnosis_guess"
+        ),
     }
 
     write_csv(table_dir / "gse292993_dkk3_roi_signal.csv", roi_rows)
@@ -201,7 +213,15 @@ def main() -> int:
         table_dir / "gse292993_dkk3_donor_compartment_summary.csv",
         donor_compartment,
     )
+    write_csv(
+        table_dir / "gse292993_dkk3_donor_diagnosis_compartment_summary.csv",
+        donor_diagnosis_compartment,
+    )
     write_csv(table_dir / "gse292993_dkk3_donor_overall_summary.csv", donor_overall)
+    write_csv(
+        table_dir / "gse292993_dkk3_donor_diagnosis_overall_summary.csv",
+        donor_diagnosis_overall,
+    )
     (meta_dir / "gse292993_dkk3_signal_summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"
     )
@@ -210,7 +230,9 @@ def main() -> int:
     print(f"\nWrote {table_dir / 'gse292993_dkk3_roi_signal.csv'}")
     print(f"Wrote {table_dir / 'gse292993_dkk3_primary_roi_by_group.csv'}")
     print(f"Wrote {table_dir / 'gse292993_dkk3_donor_compartment_summary.csv'}")
+    print(f"Wrote {table_dir / 'gse292993_dkk3_donor_diagnosis_compartment_summary.csv'}")
     print(f"Wrote {table_dir / 'gse292993_dkk3_donor_overall_summary.csv'}")
+    print(f"Wrote {table_dir / 'gse292993_dkk3_donor_diagnosis_overall_summary.csv'}")
     print(f"Wrote {meta_dir / 'gse292993_dkk3_signal_summary.json'}")
 
     failures = []
