@@ -7,6 +7,7 @@ import gzip
 import importlib.util
 import json
 import math
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -18,6 +19,15 @@ from common import configured_path, ensure_results_dirs, load_config
 
 DEFAULT_DATASET = "GSE292993"
 DEFAULT_MAX_CODES_PER_TARGET = 20
+PROBE_SUFFIX_PATTERN = re.compile(r"_[0-9]{2,}$")
+BROAD_TARGET_LABELS = {
+    "endogenous",
+    "housekeeping",
+    "negative",
+    "negative control",
+    "control",
+    "no template control",
+}
 
 
 def load_dcc_module():
@@ -66,15 +76,30 @@ def clean_target(value: object) -> str | None:
     return text
 
 
+def is_broad_target_label(target: str) -> bool:
+    return target.strip().casefold() in BROAD_TARGET_LABELS
+
+
+def target_priority(target: str) -> tuple[int, int, int, int, str]:
+    """Lower is better for choosing one gene-like target per RTS code."""
+    text = target.strip()
+    return (
+        1 if is_broad_target_label(text) else 0,
+        1 if PROBE_SUFFIX_PATTERN.search(text) else 0,
+        1 if not re.fullmatch(r"[A-Za-z0-9_.-]+", text) else 0,
+        len(text),
+        text,
+    )
+
+
 def feature_manifest(
     pkc_rows: list[dict],
     *,
     include_controls: bool,
     max_codes_per_target: int | None = DEFAULT_MAX_CODES_PER_TARGET,
 ) -> tuple[list[dict], dict[str, str], list[dict]]:
-    code_to_target: dict[str, str] = {}
-    target_rows: dict[str, dict] = {}
-    code_to_targets: defaultdict[str, set[str]] = defaultdict(set)
+    code_candidates: defaultdict[str, list[dict]] = defaultdict(list)
+    broad_target_counts: Counter[str] = Counter()
 
     for row in pkc_rows:
         code_id = str(row.get("code_id") or "").strip()
@@ -84,8 +109,38 @@ def feature_manifest(
         is_control = is_control_feature(row)
         if is_control and not include_controls:
             continue
-        code_to_targets[code_id].add(target)
+        if is_broad_target_label(target):
+            broad_target_counts[target] += 1
+            continue
+        code_candidates[code_id].append(
+            {
+                "target": target,
+                "code_class": row.get("code_class"),
+                "is_control_feature": is_control,
+            }
+        )
+
+    code_to_target: dict[str, str] = {}
+    target_rows: dict[str, dict] = {}
+    alternative_rows = []
+    for code_id, candidates in sorted(code_candidates.items()):
+        candidates = sorted(candidates, key=lambda item: target_priority(item["target"]))
+        if not candidates:
+            continue
+        selected = candidates[0]
+        target = selected["target"]
+        is_control = bool(selected["is_control_feature"])
         code_to_target[code_id] = target
+        if len(candidates) > 1:
+            alternative_rows.append(
+                {
+                    "code_id": code_id,
+                    "selected_target": target,
+                    "candidate_targets": ";".join(
+                        item["target"] for item in candidates
+                    ),
+                }
+            )
         item = target_rows.setdefault(
             target,
             {
@@ -98,12 +153,20 @@ def feature_manifest(
         )
         item["n_codes"] += 1
         item["code_ids"].append(code_id)
-        if row.get("code_class"):
-            item["code_classes"].add(str(row["code_class"]))
+        if selected.get("code_class"):
+            item["code_classes"].add(str(selected["code_class"]))
         item["is_control_feature"] = item["is_control_feature"] or is_control
 
     rows = []
-    dropped_rows = []
+    dropped_rows = [
+        {
+            "target": target,
+            "n_codes": count,
+            "drop_reason": "broad_pkc_target_label",
+            "is_control_feature": "False",
+        }
+        for target, count in sorted(broad_target_counts.items())
+    ]
     for target in sorted(target_rows):
         item = target_rows[target]
         if max_codes_per_target is not None and item["n_codes"] > max_codes_per_target:
@@ -127,13 +190,17 @@ def feature_manifest(
                 "is_control_feature": str(bool(item["is_control_feature"])),
             }
         )
-    ambiguous = {
-        code_id: sorted(targets)
-        for code_id, targets in code_to_targets.items()
-        if len(targets) > 1
-    }
-    for code_id in ambiguous:
-        code_to_target.pop(code_id, None)
+    dropped_rows.extend(
+        {
+            "target": row["selected_target"],
+            "n_codes": 1,
+            "drop_reason": "alternate_pkc_target_label_not_selected",
+            "is_control_feature": "False",
+            "code_id": row["code_id"],
+            "candidate_targets": row["candidate_targets"],
+        }
+        for row in alternative_rows
+    )
     return rows, code_to_target, dropped_rows
 
 

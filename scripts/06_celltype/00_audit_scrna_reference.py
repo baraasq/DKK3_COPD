@@ -110,10 +110,24 @@ def discover_reference_files(config: dict, reference_h5ad: Path | None) -> list[
             continue
         candidates = [
             *root.rglob("*.h5ad"),
+            *root.rglob("*.h5"),
+            *root.rglob("*.hdf5"),
             *root.rglob("filtered_feature_bc_matrix.h5"),
             *root.rglob("raw_feature_bc_matrix.h5"),
             *root.rglob("matrix.mtx"),
             *root.rglob("matrix.mtx.gz"),
+            *root.rglob("*.rds"),
+            *root.rglob("*.RDS"),
+            *root.rglob("*.rda"),
+            *root.rglob("*.RData"),
+            *root.rglob("*.csv"),
+            *root.rglob("*.csv.gz"),
+            *root.rglob("*.tsv"),
+            *root.rglob("*.tsv.gz"),
+            *root.rglob("*.tar"),
+            *root.rglob("*.tar.gz"),
+            *root.rglob("*.tgz"),
+            *root.rglob("*.zip"),
         ]
         for path in sorted(candidates):
             if path in seen:
@@ -137,8 +151,16 @@ def guess_reference_kind(path: Path) -> str:
         return "annotated_h5ad_candidate"
     if path.name in {"filtered_feature_bc_matrix.h5", "raw_feature_bc_matrix.h5"}:
         return "cellranger_h5_counts_only"
+    if suffixes.endswith(".h5") or suffixes.endswith(".hdf5"):
+        return "hdf5_candidate"
     if path.name in {"matrix.mtx", "matrix.mtx.gz"}:
         return "cellranger_mtx_counts_only"
+    if suffixes.endswith(".rds") or suffixes.endswith(".rda") or suffixes.endswith(".rdata"):
+        return "r_object_candidate"
+    if suffixes.endswith(".csv") or suffixes.endswith(".csv.gz") or suffixes.endswith(".tsv") or suffixes.endswith(".tsv.gz"):
+        return "metadata_or_matrix_table_candidate"
+    if suffixes.endswith(".tar") or suffixes.endswith(".tar.gz") or suffixes.endswith(".tgz") or suffixes.endswith(".zip"):
+        return "archive_candidate"
     return "unknown"
 
 
