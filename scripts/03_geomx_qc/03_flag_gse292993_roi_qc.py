@@ -57,6 +57,29 @@ def normalize_label(value: str | None) -> str:
     return re.sub(r"\s+", " ", str(value).strip())
 
 
+def disease_group(value: str | None) -> str:
+    label = normalize_label(value)
+    folded = label.casefold().replace("-", " ")
+    if folded == "copd":
+        return "COPD"
+    if folded in {"non smoker", "nonsmoker", "never smoker", "smoker"}:
+        return "Control"
+    return label or "unknown"
+
+
+def smoking_group(row: dict) -> str:
+    explicit = normalize_label(first_existing(row, ["characteristics_former_or_current_smoker"]))
+    if explicit:
+        return explicit
+    condition = normalize_label(row.get("diagnosis_guess"))
+    folded = condition.casefold().replace("-", " ")
+    if folded in {"non smoker", "nonsmoker", "never smoker"}:
+        return "Never smoker"
+    if folded == "smoker":
+        return "Smoker control"
+    return "unknown"
+
+
 def merge_by_key(left: list[dict], right: list[dict], key: str) -> list[dict]:
     right_by_key = {row.get(key): row for row in right if row.get(key)}
     merged = []
@@ -180,6 +203,8 @@ def main() -> int:
                 ],
             )
         )
+        row["diagnosis_group"] = disease_group(row["diagnosis_guess"])
+        row["smoking_status_guess"] = smoking_group(row)
         row["compartment_guess"] = normalize_label(
             first_existing(
                 row,
@@ -188,6 +213,7 @@ def main() -> int:
                     "characteristics_region",
                     "characteristics_segment",
                     "characteristics_tissue_region",
+                    "characteristics_location",
                     "compartment",
                 ],
             )
@@ -232,9 +258,16 @@ def main() -> int:
             )
         ),
         "roi_counts_by_diagnosis_guess": summarize_counts(rows, ["diagnosis_guess"]),
+        "roi_counts_by_diagnosis_group": summarize_counts(rows, ["diagnosis_group"]),
+        "roi_counts_by_smoking_status_guess": summarize_counts(
+            rows, ["smoking_status_guess"]
+        ),
         "roi_counts_by_compartment_guess": summarize_counts(rows, ["compartment_guess"]),
         "qc_by_diagnosis_compartment_guess": summarize_qc_by_group(
             rows, ["diagnosis_guess", "compartment_guess"]
+        ),
+        "qc_by_diagnosis_group_compartment_guess": summarize_qc_by_group(
+            rows, ["diagnosis_group", "compartment_guess"]
         ),
     }
 
@@ -246,6 +279,8 @@ def main() -> int:
             "dcc_filename",
             "dcc_id",
             "diagnosis_guess",
+            "diagnosis_group",
+            "smoking_status_guess",
             "compartment_guess",
             "donor_guess",
             "include_qc",

@@ -364,6 +364,9 @@ class InputContractTests(unittest.TestCase):
         self.assertFalse(fail_include)
         self.assertIn("aligned_reads_below_min", fail_reasons)
         self.assertIn("n_code_counts_below_min", fail_reasons)
+        self.assertEqual(roi_qc_module.disease_group("COPD"), "COPD")
+        self.assertEqual(roi_qc_module.disease_group("Non Smoker"), "Control")
+        self.assertEqual(roi_qc_module.disease_group("Smoker"), "Control")
 
 
 if __name__ == "__main__":
