@@ -47,6 +47,17 @@ GENE_SYMBOL_CANDIDATES = [
     "name",
     "symbol",
 ]
+DEFAULT_MAX_CODES_PER_GEOMX_TARGET = 20
+
+
+def raise_csv_field_limit() -> None:
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit = int(limit / 10)
 
 
 def write_csv(path: Path, rows: list[dict], preferred: list[str] | None = None) -> None:
@@ -134,11 +145,13 @@ def guess_reference_kind(path: Path) -> str:
 def read_geomx_genes(feature_manifest: Path) -> list[str]:
     if not feature_manifest.exists():
         return []
+    raise_csv_field_limit()
     with feature_manifest.open(newline="", encoding="utf-8-sig") as handle:
         return [
             row["target"]
             for row in csv.DictReader(handle)
             if row.get("target") and row.get("is_control_feature") != "True"
+            and int(row.get("n_codes") or 0) <= DEFAULT_MAX_CODES_PER_GEOMX_TARGET
         ]
 
 

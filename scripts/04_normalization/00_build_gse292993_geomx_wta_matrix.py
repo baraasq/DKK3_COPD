@@ -17,6 +17,7 @@ from common import configured_path, ensure_results_dirs, load_config
 
 
 DEFAULT_DATASET = "GSE292993"
+DEFAULT_MAX_CODES_PER_TARGET = 20
 
 
 def load_dcc_module():
@@ -65,7 +66,12 @@ def clean_target(value: object) -> str | None:
     return text
 
 
-def feature_manifest(pkc_rows: list[dict], *, include_controls: bool) -> tuple[list[dict], dict[str, str]]:
+def feature_manifest(
+    pkc_rows: list[dict],
+    *,
+    include_controls: bool,
+    max_codes_per_target: int | None = DEFAULT_MAX_CODES_PER_TARGET,
+) -> tuple[list[dict], dict[str, str], list[dict]]:
     code_to_target: dict[str, str] = {}
     target_rows: dict[str, dict] = {}
     code_to_targets: defaultdict[str, set[str]] = defaultdict(set)
@@ -97,8 +103,21 @@ def feature_manifest(pkc_rows: list[dict], *, include_controls: bool) -> tuple[l
         item["is_control_feature"] = item["is_control_feature"] or is_control
 
     rows = []
+    dropped_rows = []
     for target in sorted(target_rows):
         item = target_rows[target]
+        if max_codes_per_target is not None and item["n_codes"] > max_codes_per_target:
+            dropped_rows.append(
+                {
+                    "target": target,
+                    "n_codes": item["n_codes"],
+                    "drop_reason": "too_many_codes_for_single_target",
+                    "is_control_feature": str(bool(item["is_control_feature"])),
+                }
+            )
+            for code_id in item["code_ids"]:
+                code_to_target.pop(code_id, None)
+            continue
         rows.append(
             {
                 "target": target,
@@ -115,7 +134,7 @@ def feature_manifest(pkc_rows: list[dict], *, include_controls: bool) -> tuple[l
     }
     for code_id in ambiguous:
         code_to_target.pop(code_id, None)
-    return rows, code_to_target
+    return rows, code_to_target, dropped_rows
 
 
 def aggregate_counts(code_counts: dict[str, int], code_to_target: dict[str, str]) -> dict[str, int]:
@@ -168,6 +187,7 @@ def matrix_summary(
     features: list[str],
     roi_rows: list[dict],
     include_controls: bool,
+    max_codes_per_target: int | None,
     counts_matrix: dict[str, dict[str, int]],
 ) -> dict:
     nonzero_by_roi = [
@@ -193,6 +213,7 @@ def matrix_summary(
     return {
         "dataset": dataset,
         "include_controls": include_controls,
+        "max_codes_per_target": max_codes_per_target,
         "dcc_count": dcc_count,
         "n_roi_rows": len(roi_rows),
         "n_features": len(features),
@@ -207,6 +228,12 @@ def main() -> int:
         description="Build full GeoMx WTA target-by-ROI count and logCPM matrices from GSE292993 DCC files."
     )
     parser.add_argument("--include-controls", action="store_true")
+    parser.add_argument(
+        "--max-codes-per-target",
+        type=int,
+        default=DEFAULT_MAX_CODES_PER_TARGET,
+        help="Drop PKC targets with more RTS codes than this; use 0 to disable.",
+    )
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
@@ -221,8 +248,11 @@ def main() -> int:
     pkc_summary, pkc_rows = dcc.parse_pkc_code_map(
         dcc.find_pkc_file(config), config["project"]["gene"]
     )
-    manifest_rows, code_to_target = feature_manifest(
-        pkc_rows, include_controls=args.include_controls
+    max_codes = args.max_codes_per_target if args.max_codes_per_target > 0 else None
+    manifest_rows, code_to_target, dropped_manifest_rows = feature_manifest(
+        pkc_rows,
+        include_controls=args.include_controls,
+        max_codes_per_target=max_codes,
     )
     features = [row["target"] for row in manifest_rows]
     paths = dcc.dcc_paths(config)
@@ -243,6 +273,7 @@ def main() -> int:
     counts_path = processed_dir / "gse292993_geomx_counts_by_roi.tsv.gz"
     logcpm_path = processed_dir / "gse292993_geomx_logcpm_by_roi.tsv.gz"
     manifest_path = table_dir / "gse292993_geomx_feature_manifest.csv"
+    dropped_manifest_path = table_dir / "gse292993_geomx_dropped_feature_manifest.csv"
     roi_manifest_path = table_dir / "gse292993_geomx_matrix_roi_manifest.csv"
     summary_path = meta_dir / "gse292993_geomx_matrix_summary.json"
 
@@ -252,6 +283,11 @@ def main() -> int:
         manifest_path,
         manifest_rows,
         preferred=["target", "n_codes", "code_classes", "is_control_feature", "code_ids"],
+    )
+    write_csv(
+        dropped_manifest_path,
+        dropped_manifest_rows,
+        preferred=["target", "n_codes", "drop_reason", "is_control_feature"],
     )
     write_csv(
         roi_manifest_path,
@@ -264,16 +300,19 @@ def main() -> int:
         features=features,
         roi_rows=roi_rows,
         include_controls=args.include_controls,
+        max_codes_per_target=max_codes,
         counts_matrix=counts_matrix,
     )
     summary.update(
         pkc=pkc_summary,
         code_to_target_count=len(code_to_target),
+        dropped_feature_count=len(dropped_manifest_rows),
         n_codes_observed_distribution=dict(sorted(n_codes_observed.items())),
         output_paths={
             "counts_by_roi": str(counts_path),
             "logcpm_by_roi": str(logcpm_path),
             "feature_manifest": str(manifest_path),
+            "dropped_feature_manifest": str(dropped_manifest_path),
             "roi_manifest": str(roi_manifest_path),
         },
     )
@@ -281,7 +320,7 @@ def main() -> int:
 
     print(json.dumps(summary, indent=2))
     print()
-    for path in (counts_path, logcpm_path, manifest_path, roi_manifest_path, summary_path):
+    for path in (counts_path, logcpm_path, manifest_path, dropped_manifest_path, roi_manifest_path, summary_path):
         print(path)
 
     failures = []

@@ -184,6 +184,10 @@ This writes:
 
 By default, negative/control PKC features are excluded from the expression
 matrix. Counts from multiple RTS codes mapping to the same target are summed.
+PKC records mapping implausibly many RTS codes to one target are dropped by
+default because they usually represent broad panel metadata rather than a
+single gene-like WTA target. Dropped targets are written to
+`results/tables/gse292993_geomx_dropped_feature_manifest.csv`.
 
 Then audit the scRNA-seq reference and, when an annotated `.h5ad` is available,
 build logCPM cell-type signatures:

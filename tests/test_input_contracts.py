@@ -569,7 +569,7 @@ class InputContractTests(unittest.TestCase):
                 "code_class": "Negative",
             },
         ]
-        manifest, code_to_target = matrix_module.feature_manifest(
+        manifest, code_to_target, dropped = matrix_module.feature_manifest(
             pkc_rows, include_controls=False
         )
         counts = matrix_module.aggregate_counts(
@@ -578,8 +578,27 @@ class InputContractTests(unittest.TestCase):
         logcpm = matrix_module.logcpm_matrix({"ROI1": counts}, ["DKK3"])
 
         self.assertEqual([row["target"] for row in manifest], ["DKK3"])
+        self.assertEqual(dropped, [])
         self.assertEqual(counts["DKK3"], 5)
         self.assertGreater(logcpm["ROI1"]["DKK3"], 0)
+
+    def test_geomx_wta_matrix_drops_implausibly_broad_pkc_targets(self):
+        matrix_module = load_geomx_matrix_module()
+        pkc_rows = [
+            {
+                "code_id": f"RTS{index}",
+                "target": "Endogenous",
+                "code_class": "Endogenous",
+            }
+            for index in range(30)
+        ]
+        manifest, code_to_target, dropped = matrix_module.feature_manifest(
+            pkc_rows, include_controls=False, max_codes_per_target=20
+        )
+
+        self.assertEqual(manifest, [])
+        self.assertEqual(code_to_target, {})
+        self.assertEqual(dropped[0]["target"], "Endogenous")
 
     def test_scrna_reference_audit_helpers_resolve_overlap(self):
         audit_module = load_scrna_audit_module()
@@ -609,6 +628,42 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(overlap["source"], "var.gene_symbols")
         self.assertEqual(overlap["n_overlap"], 2)
         self.assertEqual(overlap["common_genes"], ["AGER", "DKK3"])
+
+    def test_scrna_reference_audit_reads_large_geomx_manifest_fields(self):
+        audit_module = load_scrna_audit_module()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "feature_manifest.csv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=[
+                        "target",
+                        "n_codes",
+                        "code_ids",
+                        "is_control_feature",
+                    ],
+                )
+                writer.writeheader()
+                writer.writerow(
+                    {
+                        "target": "DKK3",
+                        "n_codes": "1",
+                        "code_ids": "RTS1",
+                        "is_control_feature": "False",
+                    }
+                )
+                writer.writerow(
+                    {
+                        "target": "BROAD_RECORD",
+                        "n_codes": "999",
+                        "code_ids": ";".join(f"RTS{index}" for index in range(50000)),
+                        "is_control_feature": "False",
+                    }
+                )
+
+            genes = audit_module.read_geomx_genes(path)
+
+        self.assertEqual(genes, ["DKK3"])
 
     def test_parenchyma_deconvolution_helpers_filter_and_correlate(self):
         deconv_module = load_deconv_module()
