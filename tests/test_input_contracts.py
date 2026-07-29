@@ -150,6 +150,17 @@ def load_scanpy_notebook_inspection_module():
     return module
 
 
+def load_annotation_code_export_module():
+    path = ROOT / "scripts" / "06_celltype" / "03_extract_gse302339_annotation_code.py"
+    spec = importlib.util.spec_from_file_location("annotation_code_export", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load annotation code export script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -757,6 +768,8 @@ class InputContractTests(unittest.TestCase):
                     "cell_type": "code",
                     "source": [
                         "adata.write_h5ad('atlas_full_annotated.h5ad')\n",
+                        "with open('output/adata_harmony_annotated_cr8', 'wb') as file:\n",
+                        "    pickle.dump(adata, file)\n",
                     ],
                 },
             ]
@@ -765,7 +778,7 @@ class InputContractTests(unittest.TestCase):
             zip_path = Path(directory) / "scanpy_workflow.zip"
             with zipfile.ZipFile(zip_path, mode="w") as archive:
                 archive.writestr("2_celltype_annotation.ipynb", json.dumps(notebook))
-            overall, summaries, matches = notebook_module.summarize_archive(
+            overall, summaries, matches, artifacts = notebook_module.summarize_archive(
                 zip_path, notebook_module.DEFAULT_TERMS
             )
 
@@ -776,7 +789,47 @@ class InputContractTests(unittest.TestCase):
         )
         self.assertTrue(summaries[0]["has_celltype_or_annotation_terms"])
         self.assertIn("atlas_full_annotated.h5ad", summaries[0]["mentioned_paths"])
+        self.assertIn("output/adata_harmony_annotated_cr8", summaries[0]["written_artifact_paths"])
+        self.assertEqual(artifacts[0]["direction"], "write")
         self.assertTrue(any("marker_gene_dict" in row["relevant_lines"] for row in matches))
+
+    def test_annotation_code_export_writes_selected_notebook_code(self):
+        export_module = load_annotation_code_export_module()
+        notebook = {
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "celldict_level1 = {'Parenchyma': ['0', '1']}\n",
+                        "adata.obs['celltype_level1'] = 'Parenchyma'\n",
+                        "with open('output/adata_harmony_annotated_cr8', 'wb') as file:\n",
+                        "    pickle.dump(adata, file)\n",
+                    ],
+                }
+            ]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            directory_path = Path(directory)
+            zip_path = directory_path / "scanpy_workflow.zip"
+            output_dir = directory_path / "code"
+            with zipfile.ZipFile(zip_path, mode="w") as archive:
+                archive.writestr("scanpy_workflow/2_celltype_annotation.ipynb", json.dumps(notebook))
+                archive.writestr("scanpy_workflow/unrelated.ipynb", json.dumps(notebook))
+            summary, rows = export_module.export_annotation_code(
+                zip_path,
+                output_dir,
+                ["2_celltype_annotation"],
+            )
+
+            code_file = Path(summary["code_files"][0])
+            exported = code_file.read_text(encoding="utf-8")
+
+        self.assertEqual(summary["n_selected_notebooks"], 1)
+        self.assertEqual(summary["cells_with_celldict"], 1)
+        self.assertEqual(summary["cells_with_open_output"], 1)
+        self.assertTrue(rows[0]["has_celltype_assignment"])
+        self.assertIn("# %% [cell 0]", exported)
+        self.assertIn("celldict_level1", exported)
 
     def test_dkk3_summary_enriches_and_counts_donors(self):
         dkk3_module = load_dkk3_summary_module()

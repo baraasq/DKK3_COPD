@@ -222,13 +222,35 @@ This writes:
 - `results/meta/gse302339_scanpy_notebook_inspection_summary.json`
 - `results/tables/gse302339_scanpy_notebook_summary.csv`
 - `results/tables/gse302339_scanpy_notebook_code_matches.csv`
+- `results/tables/gse302339_scanpy_notebook_artifact_paths.csv`
 
 Use this after the scRNA reference audit fails with a missing `.h5ad`. It scans
 only notebook code cells, so embedded UMAP/dotplot image payloads are ignored.
 Notebooks mentioning `write_h5ad` or `.write` are the best candidates for
 reconstructing an annotated reference; notebooks with only `read_10x_h5`,
 `leiden`, and marker-gene terms are likely annotation workflow notebooks rather
-than deposited reference objects.
+than deposited reference objects. The script also reports no-extension
+`output/...` paths opened in `wb`/`rb` mode, because the authors' notebooks may
+pickle intermediate annotated AnnData objects instead of writing `.h5ad` files.
+
+When the notebook inspection shows annotation dictionaries or no-extension
+`output/...` artifacts, export the full code cells from the key notebooks:
+
+```bash
+python scripts/06_celltype/03_extract_gse302339_annotation_code.py --strict
+```
+
+This writes:
+
+- `results/meta/gse302339_annotation_code_export_summary.json`
+- `results/tables/gse302339_annotation_code_cells.csv`
+- `intermediate/gse302339_scanpy_workflow_code/2_celltype_annotation.py`
+- `intermediate/gse302339_scanpy_workflow_code/8_meta_merge.py`
+
+Those exported `.py` files are audit artifacts, not cleaned runnable scripts.
+Use them to recover the authors' cluster-to-cell-type dictionaries and the
+pickle-style intermediate object names before deciding whether to reconstruct
+their annotated scRNA reference or switch to an external annotated lung atlas.
 
 ## GSE292993 DKK3 summaries
 
