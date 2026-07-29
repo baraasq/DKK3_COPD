@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import json
 import math
 import sys
 from collections import defaultdict
@@ -15,7 +16,8 @@ from common import ensure_results_dirs, load_config
 
 
 LABEL_ORDER = ["Non Smoker", "Smoker", "COPD"]
-COMPARTMENT_ORDER = ["airway", "parenchyma", "vessel", "unknown"]
+BIOLOGICAL_COMPARTMENT_ORDER = ["airway", "parenchyma", "vessel"]
+DIAGNOSTIC_COMPARTMENT_ORDER = [*BIOLOGICAL_COMPARTMENT_ORDER, "unknown"]
 METRICS = [
     {
         "column": "median_log1p_dkk3_cpm",
@@ -115,24 +117,59 @@ def finite_values(grouped: dict[str, list[dict]]) -> list[float]:
     ]
 
 
+def plot_count_summary(rows: list[dict], compartments: list[str]) -> dict:
+    available = sorted(
+        {
+            row.get("compartment_guess")
+            for row in rows
+            if row.get("compartment_guess") not in (None, "")
+        }
+    )
+    counts = []
+    for compartment in compartments:
+        grouped = compartment_values(rows, METRICS[0]["column"], compartment)
+        item = {"compartment_guess": compartment}
+        total = 0
+        for label in LABEL_ORDER:
+            n_label = len(grouped[label])
+            item[f"n_{label.lower().replace(' ', '_')}_donors"] = n_label
+            total += n_label
+        item["n_total_donor_rows"] = total
+        counts.append(item)
+    return {
+        "requested_compartments": compartments,
+        "available_compartments_in_donor_table": available,
+        "donor_rows_by_requested_compartment": counts,
+        "missing_requested_compartments": [
+            row["compartment_guess"] for row in counts if row["n_total_donor_rows"] == 0
+        ],
+        "primary_metric_for_counts": METRICS[0]["column"],
+    }
+
+
 def parse_compartments(value: str) -> list[str]:
-    if value.strip().lower() == "all":
-        return COMPARTMENT_ORDER
+    normalized = value.strip().lower().replace("_", "-")
+    if normalized == "all":
+        return BIOLOGICAL_COMPARTMENT_ORDER
+    if normalized in {"diagnostic", "all-with-unknown", "all+unknown"}:
+        return DIAGNOSTIC_COMPARTMENT_ORDER
     requested = [item.strip().lower() for item in value.split(",") if item.strip()]
-    unknown = [item for item in requested if item not in COMPARTMENT_ORDER]
+    unknown = [item for item in requested if item not in DIAGNOSTIC_COMPARTMENT_ORDER]
     if unknown:
         raise ValueError(
             "Unknown compartment(s): "
             + ", ".join(unknown)
-            + ". Expected one or more of: all, "
-            + ", ".join(COMPARTMENT_ORDER)
+            + ". Expected one or more of: all, diagnostic, "
+            + ", ".join(DIAGNOSTIC_COMPARTMENT_ORDER)
         )
     return requested
 
 
 def output_stem(compartments: list[str]) -> str:
-    if compartments == COMPARTMENT_ORDER:
+    if compartments == BIOLOGICAL_COMPARTMENT_ORDER:
         return "gse292993_dkk3_all_compartments_donor_signal"
+    if compartments == DIAGNOSTIC_COMPARTMENT_ORDER:
+        return "gse292993_dkk3_all_compartments_with_unknown_donor_signal"
     return "gse292993_dkk3_" + "_".join(compartments) + "_donor_signal"
 
 
@@ -185,6 +222,17 @@ def plot_panel(axis, donor_rows: list[dict], effect_rows: list[dict], compartmen
         )
 
     values = finite_values(grouped)
+    if not values:
+        axis.text(
+            0.5,
+            0.52,
+            "no donor rows\nin plotting table",
+            transform=axis.transAxes,
+            ha="center",
+            va="center",
+            fontsize=9,
+            color="#777777",
+        )
     if metric["column"].startswith("fraction"):
         axis.set_ylim(-0.04, 1.04)
     elif values:
@@ -225,8 +273,8 @@ def main() -> int:
         "--compartment",
         default="all",
         help=(
-            "Compartment to plot: all, airway, parenchyma, vessel, unknown, "
-            "or a comma-separated subset."
+            "Compartment to plot: all for airway/parenchyma/vessel, diagnostic "
+            "for all plus unknown, or a comma-separated subset."
         ),
     )
     parser.add_argument("--formats", default="png,svg,pdf")
@@ -240,6 +288,7 @@ def main() -> int:
     config = load_config()
     output = ensure_results_dirs(config)
     table_dir = output["tables"]
+    meta_dir = output["meta"]
     figure_dir = output["figures"] / "gse292993_dkk3"
     figure_dir.mkdir(parents=True, exist_ok=True)
 
@@ -248,6 +297,7 @@ def main() -> int:
     )
     effect_rows = read_csv(table_dir / "gse292993_dkk3_smoking_strata_effect_tests.csv")
     compartments = parse_compartments(args.compartment)
+    summary = plot_count_summary(donor_rows, compartments)
 
     fig, axes = plt.subplots(
         len(compartments),
@@ -272,8 +322,10 @@ def main() -> int:
                 colors,
             )
 
-    if compartments == COMPARTMENT_ORDER:
+    if compartments == BIOLOGICAL_COMPARTMENT_ORDER:
         title = "GSE292993 donor-level DKK3 signal by GeoMx compartment"
+    elif compartments == DIAGNOSTIC_COMPARTMENT_ORDER:
+        title = "GSE292993 donor-level DKK3 signal by GeoMx compartment, with unknown"
     else:
         title = "GSE292993 donor-level DKK3 signal: " + ", ".join(compartments)
     fig.suptitle(title, fontsize=13, fontweight="bold")
@@ -283,7 +335,13 @@ def main() -> int:
         fig.savefig(path, dpi=300 if fmt == "png" else None)
         output_paths.append(str(path))
     plt.close(fig)
+    summary["output_paths"] = output_paths
+    summary_path = meta_dir / "gse292993_dkk3_compartment_plot_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(json.dumps(summary, indent=2))
+    print()
     print("\n".join(output_paths))
+    print(summary_path)
     return 0
 
 

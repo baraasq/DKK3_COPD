@@ -504,6 +504,14 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(grouped["COPD"][0]["plot_value"], 2.0)
         self.assertEqual(counts["Non Smoker"]["unknown"], 1)
         self.assertEqual(donor_counts["COPD"]["parenchyma"], 1)
+        self.assertEqual(
+            plot_module.display_label("unknown", "diagnosis_guess"),
+            "unknown diagnosis",
+        )
+        self.assertEqual(
+            plot_module.display_label("unknown", "compartment_guess"),
+            "unknown compartment",
+        )
         self.assertEqual(summary["n_pass_qc"], 1)
         self.assertIsNone(
             summary["standard_ngs_like_metrics_available"]["mitochondrial_percent"]
@@ -539,6 +547,16 @@ class InputContractTests(unittest.TestCase):
                     "compartment_guess": "airway",
                     "donor_guess": "P2",
                     "dkk3_count": "0",
+                    "total_code_counts": "1000",
+                    "dkk3_above_geometric_loq": "False",
+                    "dkk3_above_arithmetic_loq": "False",
+                },
+                {
+                    "include_qc": "True",
+                    "diagnosis_group": "Control",
+                    "compartment_guess": "unknown",
+                    "donor_guess": "P3",
+                    "dkk3_count": "5",
                     "total_code_counts": "1000",
                     "dkk3_above_geometric_loq": "False",
                     "dkk3_above_arithmetic_loq": "False",
@@ -681,6 +699,12 @@ class InputContractTests(unittest.TestCase):
                 "compartment_guess": "parenchyma",
                 "median_log1p_dkk3_cpm": "3.0",
             },
+            {
+                "donor_guess": "P4",
+                "diagnosis_guess": "COPD",
+                "compartment_guess": "vessel",
+                "median_log1p_dkk3_cpm": "2.0",
+            },
         ]
         effect_rows = [
             {
@@ -703,6 +727,10 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(len(grouped["Smoker"]), 0)
         self.assertEqual(
             figure_module.parse_compartments("all"),
+            ["airway", "parenchyma", "vessel"],
+        )
+        self.assertEqual(
+            figure_module.parse_compartments("diagnostic"),
             ["airway", "parenchyma", "vessel", "unknown"],
         )
         self.assertEqual(
@@ -710,8 +738,19 @@ class InputContractTests(unittest.TestCase):
             ["parenchyma", "vessel"],
         )
         self.assertEqual(
-            figure_module.output_stem(["airway", "parenchyma", "vessel", "unknown"]),
+            figure_module.output_stem(["airway", "parenchyma", "vessel"]),
             "gse292993_dkk3_all_compartments_donor_signal",
+        )
+        self.assertEqual(
+            figure_module.output_stem(["airway", "parenchyma", "vessel", "unknown"]),
+            "gse292993_dkk3_all_compartments_with_unknown_donor_signal",
+        )
+        plot_summary = figure_module.plot_count_summary(
+            donor_rows, ["airway", "parenchyma", "vessel"]
+        )
+        self.assertEqual(plot_summary["missing_requested_compartments"], [])
+        self.assertIn(
+            "vessel", plot_summary["available_compartments_in_donor_table"]
         )
         self.assertIn("COPD-Non Smoker", figure_module.metric_effect_text(effects))
         self.assertEqual(

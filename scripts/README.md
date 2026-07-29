@@ -144,7 +144,10 @@ The closest GeoMx equivalents to standard spatial/scRNA QC are
 `total_code_counts` for total recovered signal, `n_code_counts` for detected
 targets, `umi_q30` for UMI quality, and negative-probe summaries for background.
 GeoMx DCC files do not directly provide a `% mitochondrial` metric, and nuclei
-count / ROI area require image or ROI annotation metadata if available.
+count / ROI area require image or ROI annotation metadata if available. Rows
+labeled `unknown diagnosis` or `unknown compartment` are retained here only for
+QC auditing; they indicate unresolved GEO metadata labels, not a biological
+group to interpret.
 
 After ROI QC, compute DKK3 detectability relative to negative-probe background:
 
@@ -181,10 +184,10 @@ This writes:
 - `results/tables/gse292993_dkk3_donor_diagnosis_overall_summary.csv`
 
 The primary summary keeps QC-passing ROIs with known COPD/control labels,
-airway/parenchyma/vessel/unknown compartment labels, and known donor IDs. The
-`unknown` compartment is retained for diagnostics, not treated as a clean
-anatomical compartment. ROI summaries are descriptive; donor-compartment
-summaries are the unit to carry forward into inference.
+airway/parenchyma/vessel compartment labels, and known donor IDs. Unknown
+diagnosis or compartment rows are excluded from the DKK3 biological summaries
+and retained only in QC plots/tables. ROI summaries are descriptive;
+donor-compartment summaries are the unit to carry forward into inference.
 
 Then run donor-aware COPD vs control comparisons within each compartment:
 
@@ -221,8 +224,8 @@ tables that preserve the raw GEO `characteristics_condition` labels.
 
 ## DKK3 Figures
 
-Create the donor-level DKK3 summary figure across airway, parenchyma, vessel,
-and unknown compartments after the stratified tests are available:
+Create the donor-level DKK3 summary figure across airway, parenchyma, and
+vessel compartments after the stratified tests are available:
 
 ```bash
 python scripts/09_figures/00_plot_gse292993_dkk3_compartments.py
@@ -234,9 +237,15 @@ This writes PNG, SVG, and PDF versions of:
 
 The figure shows donor-level `Non Smoker`, `Smoker`, and `COPD` distributions
 for median `log1p(DKK3 CPM)`, above-LOQ fraction, and median raw DKK3 count in
-each compartment. The `unknown` row is included as a diagnostic check. To
-recreate a single-compartment figure, pass a compartment explicitly:
+each biological compartment. To recreate a single-compartment figure, pass a
+compartment explicitly:
 
 ```bash
 python scripts/09_figures/00_plot_gse292993_dkk3_compartments.py --compartment parenchyma
+```
+
+To deliberately include unresolved compartment labels for a diagnostic plot:
+
+```bash
+python scripts/09_figures/00_plot_gse292993_dkk3_compartments.py --compartment diagnostic
 ```

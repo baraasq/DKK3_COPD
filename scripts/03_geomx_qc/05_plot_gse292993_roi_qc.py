@@ -101,6 +101,18 @@ def ordered_labels(rows: list[dict], column: str, preferred: list[str]) -> list[
     return ordered
 
 
+def display_label(value: str, column: str) -> str:
+    if value == "unknown" and column == "diagnosis_guess":
+        return "unknown diagnosis"
+    if value == "unknown" and column == "compartment_guess":
+        return "unknown compartment"
+    if value == "True" and column == "include_qc":
+        return "pass QC"
+    if value == "False" and column == "include_qc":
+        return "fail QC"
+    return value
+
+
 def stable_jitter(label: str, *, width: float = 0.18) -> float:
     digest = hashlib.sha1(label.encode("utf-8")).hexdigest()
     value = int(digest[:8], 16) / 0xFFFFFFFF
@@ -209,7 +221,11 @@ def plot_metric_distributions(rows: list[dict], path_stem: Path, formats: list[s
             )
         axis.set_title(metric["title"], fontsize=10.5, fontweight="bold")
         axis.set_ylabel(metric["ylabel"])
-        axis.set_xticks(range(1, len(labels) + 1), labels, rotation=20)
+        axis.set_xticks(
+            range(1, len(labels) + 1),
+            [display_label(label, "diagnosis_guess") for label in labels],
+            rotation=20,
+        )
         axis.grid(axis="y", color="#dddddd", linewidth=0.8)
         axis.spines["top"].set_visible(False)
         axis.spines["right"].set_visible(False)
@@ -231,6 +247,9 @@ def plot_balance(rows: list[dict], path_stem: Path, formats: list[str]) -> list[
     import matplotlib.pyplot as plt
 
     diagnosis_labels = ordered_labels(rows, "diagnosis_guess", DIAGNOSIS_ORDER)
+    diagnosis_display_labels = [
+        display_label(label, "diagnosis_guess") for label in diagnosis_labels
+    ]
     compartment_labels = ordered_labels(rows, "compartment_guess", COMPARTMENT_ORDER)
     colors = {
         "airway": "#66C2A5",
@@ -251,10 +270,10 @@ def plot_balance(rows: list[dict], path_stem: Path, formats: list[str]) -> list[
         for compartment in compartment_labels:
             values = [table[label][compartment] for label in diagnosis_labels]
             axis.bar(
-                diagnosis_labels,
+                diagnosis_display_labels,
                 values,
                 bottom=bottoms,
-                label=compartment,
+                label=display_label(compartment, "compartment_guess"),
                 color=colors.get(compartment, "#999999"),
                 edgecolor="white",
             )
@@ -271,10 +290,10 @@ def plot_balance(rows: list[dict], path_stem: Path, formats: list[str]) -> list[
     for passed in pass_labels:
         values = [qc_counts[label][passed] for label in diagnosis_labels]
         axes[2].bar(
-            diagnosis_labels,
+            diagnosis_display_labels,
             values,
             bottom=bottoms,
-            label="pass QC" if passed == "True" else "fail QC",
+            label=display_label(passed, "include_qc"),
             color=pass_colors[passed],
             edgecolor="white",
         )
@@ -321,6 +340,8 @@ def qc_summary(rows: list[dict]) -> dict:
             "negative_probe_max_counts",
         ],
         "notes": [
+            "Rows labeled unknown diagnosis/compartment are metadata buckets produced when expected GEO condition/location labels are absent or unresolved.",
+            "Unknown diagnosis rows should be excluded from COPD/control biological inference and retained only for QC auditing.",
             "GeoMx DCC QC does not provide a direct percent-mitochondrial metric like scRNA-seq or whole-transcriptome spot matrices.",
             "Nuclei count, ROI area, counts per nucleus, and counts per area require image/ROI annotation metadata if available outside the DCC files.",
         ],
