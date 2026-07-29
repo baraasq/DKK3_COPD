@@ -128,6 +128,17 @@ def load_dkk3_strata_module():
     return module
 
 
+def load_dkk3_figure_module():
+    path = ROOT / "scripts" / "09_figures" / "00_plot_gse292993_dkk3_parenchyma.py"
+    spec = importlib.util.spec_from_file_location("dkk3_figure", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load DKK3 figure script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def csv_text(fieldnames: list[str], rows: list[dict]) -> str:
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fieldnames)
@@ -596,6 +607,53 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(result["n_label_a_donors"], 2)
         self.assertEqual(result["n_label_b_donors"], 2)
         self.assertEqual(result["mean_difference_label_a_minus_label_b"], 3.0)
+
+    def test_dkk3_figure_helpers_filter_and_format(self):
+        figure_module = load_dkk3_figure_module()
+        donor_rows = [
+            {
+                "donor_guess": "P1",
+                "diagnosis_guess": "COPD",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "4.0",
+            },
+            {
+                "donor_guess": "P2",
+                "diagnosis_guess": "Smoker",
+                "compartment_guess": "airway",
+                "median_log1p_dkk3_cpm": "5.0",
+            },
+            {
+                "donor_guess": "P3",
+                "diagnosis_guess": "Non Smoker",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "3.0",
+            },
+        ]
+        effect_rows = [
+            {
+                "compartment_guess": "parenchyma",
+                "metric": "median_log1p_dkk3_cpm",
+                "label_a": "COPD",
+                "label_b": "Non Smoker",
+                "mean_difference_label_a_minus_label_b": "1.0",
+                "permutation_p_two_sided": "0.031",
+            }
+        ]
+        grouped = figure_module.parenchyma_values(
+            donor_rows, "median_log1p_dkk3_cpm", "parenchyma"
+        )
+        effects = figure_module.effect_lookup(
+            effect_rows, "parenchyma", "median_log1p_dkk3_cpm"
+        )
+
+        self.assertEqual(len(grouped["COPD"]), 1)
+        self.assertEqual(len(grouped["Smoker"]), 0)
+        self.assertIn("COPD-Non Smoker", figure_module.metric_effect_text(effects))
+        self.assertEqual(
+            figure_module.stable_jitter("P1"),
+            figure_module.stable_jitter("P1"),
+        )
 
 
 if __name__ == "__main__":

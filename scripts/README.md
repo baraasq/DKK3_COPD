@@ -199,3 +199,19 @@ This writes:
 The default pairwise contrasts are `COPD` vs `Non Smoker`, `COPD` vs `Smoker`,
 and `Smoker` vs `Non Smoker` within each compartment, using the donor-level
 tables that preserve the raw GEO `characteristics_condition` labels.
+
+## DKK3 Figures
+
+Create the donor-level parenchymal DKK3 summary figure after the stratified
+tests are available:
+
+```bash
+python scripts/09_figures/00_plot_gse292993_dkk3_parenchyma.py
+```
+
+This writes PNG, SVG, and PDF versions of:
+
+- `results/figures/gse292993_dkk3/gse292993_dkk3_parenchyma_donor_signal`
+
+The figure shows donor-level `Non Smoker`, `Smoker`, and `COPD` distributions
+for median `log1p(DKK3 CPM)`, above-LOQ fraction, and median raw DKK3 count.
