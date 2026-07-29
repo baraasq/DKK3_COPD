@@ -6,6 +6,8 @@ import csv
 import gzip
 import json
 import sys
+import tarfile
+import zipfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -94,10 +96,10 @@ def file_size(path: Path) -> int | None:
 
 def discover_reference_files(config: dict, reference_h5ad: Path | None) -> list[dict]:
     roots = [
-        configured_path(config, "geomx_processed_dir"),
         project_path("data/external/scrna_reference"),
         project_path("data/external"),
         project_path(f"data/raw/downloads/geo/{DEFAULT_ACCESSION}"),
+        project_path(f"data/raw/downloads/zenodo"),
         project_path(f"data/raw/{DEFAULT_ACCESSION}"),
         project_path(f"data/processed/{DEFAULT_ACCESSION}"),
     ]
@@ -140,6 +142,7 @@ def discover_reference_files(config: dict, reference_h5ad: Path | None) -> list[
                     "suffix": "".join(path.suffixes),
                     "size_bytes": file_size(path),
                     "kind": guess_reference_kind(path),
+                    **archive_preview(path),
                 }
             )
     return rows
@@ -162,6 +165,39 @@ def guess_reference_kind(path: Path) -> str:
     if suffixes.endswith(".tar") or suffixes.endswith(".tar.gz") or suffixes.endswith(".tgz") or suffixes.endswith(".zip"):
         return "archive_candidate"
     return "unknown"
+
+
+def archive_preview(path: Path, *, max_members: int = 20) -> dict:
+    kind = guess_reference_kind(path)
+    if kind != "archive_candidate":
+        return {}
+    preview = {
+        "archive_member_count": None,
+        "archive_first_members": [],
+        "archive_extension_counts": {},
+        "archive_status": "unknown",
+    }
+    try:
+        names = []
+        if zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path) as archive:
+                names = archive.namelist()
+        elif tarfile.is_tarfile(path):
+            with tarfile.open(path) as archive:
+                names = archive.getnames()
+        else:
+            preview["archive_status"] = "unsupported_archive_format"
+            return preview
+        suffix_counts = Counter("".join(Path(name).suffixes) or "<none>" for name in names)
+        preview.update(
+            archive_member_count=len(names),
+            archive_first_members=names[:max_members],
+            archive_extension_counts=dict(sorted(suffix_counts.items())),
+            archive_status="ok",
+        )
+    except Exception as exc:
+        preview["archive_status"] = f"preview_failed: {exc}"
+    return preview
 
 
 def read_geomx_genes(feature_manifest: Path) -> list[str]:
