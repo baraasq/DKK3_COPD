@@ -164,3 +164,20 @@ The primary summary keeps QC-passing ROIs with known COPD/control labels,
 airway/parenchyma/vessel compartments, and known donor IDs. ROI summaries are
 descriptive; donor-compartment summaries are the unit to carry forward into
 inference.
+
+Then run donor-aware COPD vs control comparisons within each compartment:
+
+```bash
+python scripts/05_dkk3/01_test_gse292993_dkk3_donor_effects.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_dkk3_donor_effect_summary.json`
+- `results/tables/gse292993_dkk3_donor_effect_tests.csv`
+
+The primary metric is donor-level median `log1p(DKK3 CPM)` within each
+compartment. The script also tests donor-level median CPM, median raw count, and
+above-LOQ fractions using permutation p-values and bootstrap confidence
+intervals. These are still unadjusted exploratory tests; treat them as the
+first donor-aware screen before fuller mixed or multivariable models.

@@ -5,6 +5,7 @@ import gzip
 import importlib.util
 import io
 import json
+import random
 import sys
 import tarfile
 import tempfile
@@ -99,6 +100,17 @@ def load_dkk3_summary_module():
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("Could not load DKK3 summary script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_dkk3_effect_module():
+    path = ROOT / "scripts" / "05_dkk3" / "01_test_gse292993_dkk3_donor_effects.py"
+    spec = importlib.util.spec_from_file_location("dkk3_effects", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load DKK3 effect script.")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -476,6 +488,49 @@ class InputContractTests(unittest.TestCase):
                 {"diagnosis_group": "Control", "n_donors": 1},
             ],
         )
+
+    def test_dkk3_effects_compare_donor_groups(self):
+        effects_module = load_dkk3_effect_module()
+        rng = random.Random(123)
+        rows = [
+            {
+                "donor_guess": "C1",
+                "diagnosis_group": "COPD",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "3.0",
+            },
+            {
+                "donor_guess": "C2",
+                "diagnosis_group": "COPD",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "4.0",
+            },
+            {
+                "donor_guess": "N1",
+                "diagnosis_group": "Control",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "1.0",
+            },
+            {
+                "donor_guess": "N2",
+                "diagnosis_group": "Control",
+                "compartment_guess": "parenchyma",
+                "median_log1p_dkk3_cpm": "2.0",
+            },
+        ]
+        result = effects_module.test_compartment_metric(
+            rows,
+            "parenchyma",
+            "median_log1p_dkk3_cpm",
+            permutations=100,
+            bootstraps=100,
+            rng=rng,
+        )
+
+        self.assertEqual(result["n_copd_donors"], 2)
+        self.assertEqual(result["n_control_donors"], 2)
+        self.assertEqual(result["mean_difference_copd_minus_control"], 2.0)
+        self.assertIsNotNone(result["permutation_p_two_sided"])
 
 
 if __name__ == "__main__":
