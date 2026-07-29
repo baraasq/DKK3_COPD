@@ -106,6 +106,39 @@ def load_geomx_qc_plot_module():
     return module
 
 
+def load_geomx_matrix_module():
+    path = ROOT / "scripts" / "04_normalization" / "00_build_gse292993_geomx_wta_matrix.py"
+    spec = importlib.util.spec_from_file_location("geomx_matrix", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx WTA matrix script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_scrna_audit_module():
+    path = ROOT / "scripts" / "06_celltype" / "00_audit_scrna_reference.py"
+    spec = importlib.util.spec_from_file_location("scrna_audit", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load scRNA reference audit script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_deconv_module():
+    path = ROOT / "scripts" / "06_celltype" / "01_deconvolve_gse292993_parenchyma_nnls.py"
+    spec = importlib.util.spec_from_file_location("parenchyma_deconv", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load parenchyma deconvolution script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -516,6 +549,119 @@ class InputContractTests(unittest.TestCase):
         self.assertIsNone(
             summary["standard_ngs_like_metrics_available"]["mitochondrial_percent"]
         )
+
+    def test_geomx_wta_matrix_feature_aggregation(self):
+        matrix_module = load_geomx_matrix_module()
+        pkc_rows = [
+            {
+                "code_id": "RTS1",
+                "target": "DKK3",
+                "code_class": "Endogenous",
+            },
+            {
+                "code_id": "RTS2",
+                "target": "DKK3",
+                "code_class": "Endogenous",
+            },
+            {
+                "code_id": "NEG1",
+                "target": "NegProbe",
+                "code_class": "Negative",
+            },
+        ]
+        manifest, code_to_target = matrix_module.feature_manifest(
+            pkc_rows, include_controls=False
+        )
+        counts = matrix_module.aggregate_counts(
+            {"RTS1": 2, "RTS2": 3, "NEG1": 100}, code_to_target
+        )
+        logcpm = matrix_module.logcpm_matrix({"ROI1": counts}, ["DKK3"])
+
+        self.assertEqual([row["target"] for row in manifest], ["DKK3"])
+        self.assertEqual(counts["DKK3"], 5)
+        self.assertGreater(logcpm["ROI1"]["DKK3"], 0)
+
+    def test_scrna_reference_audit_helpers_resolve_overlap(self):
+        audit_module = load_scrna_audit_module()
+
+        class FakeSeries:
+            def __init__(self, values):
+                self.values = values
+
+            def tolist(self):
+                return self.values
+
+        class FakeVar(dict):
+            @property
+            def columns(self):
+                return list(self.keys())
+
+        class FakeAdata:
+            var_names = ["ENSG1", "ENSG2", "OTHER"]
+            var = FakeVar({"gene_symbols": FakeSeries(["DKK3", "AGER", "BAD"])})
+
+        self.assertEqual(
+            audit_module.resolve_column(["Cell Type", "donor"], ["cell type"]),
+            "Cell Type",
+        )
+        overlap = audit_module.select_gene_overlap(FakeAdata(), ["DKK3", "AGER"])
+
+        self.assertEqual(overlap["source"], "var.gene_symbols")
+        self.assertEqual(overlap["n_overlap"], 2)
+        self.assertEqual(overlap["common_genes"], ["AGER", "DKK3"])
+
+    def test_parenchyma_deconvolution_helpers_filter_and_correlate(self):
+        deconv_module = load_deconv_module()
+        rows = [
+            {
+                "geo_accession": "GSM1",
+                "include_qc": "True",
+                "diagnosis_group": "COPD",
+                "diagnosis_guess": "COPD",
+                "compartment_guess": "parenchyma",
+                "donor_guess": "P1",
+                "fraction_fibroblast": "0.8",
+                "log1p_dkk3_cpm": "4.0",
+            },
+            {
+                "geo_accession": "GSM2",
+                "include_qc": "True",
+                "diagnosis_group": "Control",
+                "diagnosis_guess": "Non Smoker",
+                "compartment_guess": "airway",
+                "donor_guess": "P2",
+                "fraction_fibroblast": "0.1",
+                "log1p_dkk3_cpm": "1.0",
+            },
+            {
+                "geo_accession": "GSM3",
+                "include_qc": "False",
+                "diagnosis_group": "COPD",
+                "diagnosis_guess": "COPD",
+                "compartment_guess": "parenchyma",
+                "donor_guess": "P3",
+                "fraction_fibroblast": "0.2",
+                "log1p_dkk3_cpm": "2.0",
+            },
+        ]
+        metadata = deconv_module.roi_metadata(rows, "parenchyma")
+        donor_rows = deconv_module.donor_summaries(
+            [rows[0]], ["fraction_fibroblast"]
+        )
+        correlations = deconv_module.correlation_rows(
+            [
+                {"fraction_fibroblast": "0.1", "log1p_dkk3_cpm": "1.0"},
+                {"fraction_fibroblast": "0.5", "log1p_dkk3_cpm": "2.0"},
+                {"fraction_fibroblast": "0.9", "log1p_dkk3_cpm": "3.0"},
+            ],
+            ["fraction_fibroblast"],
+            unit="roi",
+        )
+
+        self.assertEqual(deconv_module.safe_name("AT2 / epithelial"), "at2_epithelial")
+        self.assertEqual(list(metadata), ["GSM1"])
+        self.assertEqual(donor_rows[0]["median_fraction_fibroblast"], 0.8)
+        self.assertAlmostEqual(correlations[0]["spearman_rho"], 1.0)
 
     def test_dkk3_summary_enriches_and_counts_donors(self):
         dkk3_module = load_dkk3_summary_module()

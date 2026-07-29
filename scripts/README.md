@@ -165,6 +165,46 @@ LOQ using `exp(mean(log(negative + 1)) + 2*sd(log(negative + 1))) - 1`, and an
 arithmetic `mean + 2*sd` call. Do not discard low-DKK3 ROIs automatically from
 expression modeling; use these flags to interpret detectability and sensitivity.
 
+## GSE292993 WTA matrix and scRNA reference
+
+Before cell-type composition analysis, build the full GeoMx WTA target matrix
+from the DCC files:
+
+```bash
+python scripts/04_normalization/00_build_gse292993_geomx_wta_matrix.py --strict
+```
+
+This writes:
+
+- `data/processed/gse292993/gse292993_geomx_counts_by_roi.tsv.gz`
+- `data/processed/gse292993/gse292993_geomx_logcpm_by_roi.tsv.gz`
+- `results/tables/gse292993_geomx_feature_manifest.csv`
+- `results/tables/gse292993_geomx_matrix_roi_manifest.csv`
+- `results/meta/gse292993_geomx_matrix_summary.json`
+
+By default, negative/control PKC features are excluded from the expression
+matrix. Counts from multiple RTS codes mapping to the same target are summed.
+
+Then audit the scRNA-seq reference and, when an annotated `.h5ad` is available,
+build logCPM cell-type signatures:
+
+```bash
+python scripts/06_celltype/00_audit_scrna_reference.py --strict
+```
+
+This writes:
+
+- `results/meta/gse302339_scrna_reference_audit_summary.json`
+- `results/tables/gse302339_scrna_reference_file_manifest.csv`
+- `results/tables/gse302339_scrna_celltype_counts.csv`
+- `results/tables/gse302339_scrna_signature_manifest.csv`
+- `data/processed/gse292993/gse302339_scrna_reference_signatures_logcpm.csv`
+
+If the downloaded scRNA deposit only contains Cell Ranger count matrices, the
+audit will report that it is counts-only and not ready for deconvolution. In
+that case, provide an annotated `.h5ad` with a cell-type column via
+`--reference-h5ad` and, if needed, `--cell-type-column`.
+
 ## GSE292993 DKK3 summaries
 
 After QC and LOQ calling, summarize DKK3 at ROI and donor-compartment levels:
@@ -188,6 +228,26 @@ airway/parenchyma/vessel compartment labels, and known donor IDs. Unknown
 diagnosis or compartment rows are excluded from the DKK3 biological summaries
 and retained only in QC plots/tables. ROI summaries are descriptive;
 donor-compartment summaries are the unit to carry forward into inference.
+
+After the WTA matrix, scRNA signatures, and DKK3 ROI summaries exist, run the
+first parenchyma-only baseline deconvolution:
+
+```bash
+python scripts/06_celltype/01_deconvolve_gse292993_parenchyma_nnls.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_parenchyma_nnls_deconvolution_summary.json`
+- `results/tables/gse292993_parenchyma_nnls_deconvolution_roi.csv`
+- `results/tables/gse292993_parenchyma_nnls_deconvolution_donor.csv`
+- `results/tables/gse292993_parenchyma_nnls_deconvolution_dkk3_correlations.csv`
+- `results/tables/gse292993_parenchyma_nnls_deconvolution_celltype_manifest.csv`
+
+The NNLS deconvolution is a first-pass composition estimate, not a final cell
+assignment. Use it to ask whether parenchymal DKK3 tracks fibroblast/stromal,
+pneumocyte, endothelial, or immune composition before moving to
+ligand-receptor analysis.
 
 Then run donor-aware COPD vs control comparisons within each compartment:
 
