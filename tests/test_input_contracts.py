@@ -95,6 +95,17 @@ def load_geomx_loq_module():
     return module
 
 
+def load_geomx_qc_plot_module():
+    path = ROOT / "scripts" / "03_geomx_qc" / "05_plot_gse292993_roi_qc.py"
+    spec = importlib.util.spec_from_file_location("geomx_qc_plot", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx QC plot script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -129,7 +140,7 @@ def load_dkk3_strata_module():
 
 
 def load_dkk3_figure_module():
-    path = ROOT / "scripts" / "09_figures" / "00_plot_gse292993_dkk3_parenchyma.py"
+    path = ROOT / "scripts" / "09_figures" / "00_plot_gse292993_dkk3_compartments.py"
     spec = importlib.util.spec_from_file_location("dkk3_figure", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("Could not load DKK3 figure script.")
@@ -457,6 +468,47 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(summary[0]["n_dkk3_above_geometric_loq"], 1)
         self.assertEqual(summary[0]["n_dkk3_above_arithmetic_loq"], 0)
 
+    def test_geomx_qc_plot_helpers_count_and_transform(self):
+        plot_module = load_geomx_qc_plot_module()
+        rows = [
+            {
+                "geo_accession": "GSM1",
+                "diagnosis_guess": "COPD",
+                "compartment_guess": "parenchyma",
+                "donor_guess": "P1",
+                "include_qc": "True",
+                "total_code_counts": "99",
+            },
+            {
+                "geo_accession": "GSM2",
+                "diagnosis_guess": "Non Smoker",
+                "compartment_guess": "unknown",
+                "donor_guess": "P2",
+                "include_qc": "False",
+                "total_code_counts": "9",
+            },
+        ]
+        metric = {
+            "column": "total_code_counts",
+            "transform": "log10p1",
+        }
+        grouped = plot_module.metric_values(rows, metric, "diagnosis_guess")
+        counts = plot_module.count_table(
+            rows, "diagnosis_guess", "compartment_guess"
+        )
+        donor_counts = plot_module.donor_count_table(
+            rows, "diagnosis_guess", "compartment_guess"
+        )
+        summary = plot_module.qc_summary(rows)
+
+        self.assertEqual(grouped["COPD"][0]["plot_value"], 2.0)
+        self.assertEqual(counts["Non Smoker"]["unknown"], 1)
+        self.assertEqual(donor_counts["COPD"]["parenchyma"], 1)
+        self.assertEqual(summary["n_pass_qc"], 1)
+        self.assertIsNone(
+            summary["standard_ngs_like_metrics_available"]["mitochondrial_percent"]
+        )
+
     def test_dkk3_summary_enriches_and_counts_donors(self):
         dkk3_module = load_dkk3_summary_module()
         rows = dkk3_module.enrich_roi_rows(
@@ -640,7 +692,7 @@ class InputContractTests(unittest.TestCase):
                 "permutation_p_two_sided": "0.031",
             }
         ]
-        grouped = figure_module.parenchyma_values(
+        grouped = figure_module.compartment_values(
             donor_rows, "median_log1p_dkk3_cpm", "parenchyma"
         )
         effects = figure_module.effect_lookup(
@@ -649,6 +701,18 @@ class InputContractTests(unittest.TestCase):
 
         self.assertEqual(len(grouped["COPD"]), 1)
         self.assertEqual(len(grouped["Smoker"]), 0)
+        self.assertEqual(
+            figure_module.parse_compartments("all"),
+            ["airway", "parenchyma", "vessel", "unknown"],
+        )
+        self.assertEqual(
+            figure_module.parse_compartments("parenchyma,vessel"),
+            ["parenchyma", "vessel"],
+        )
+        self.assertEqual(
+            figure_module.output_stem(["airway", "parenchyma", "vessel", "unknown"]),
+            "gse292993_dkk3_all_compartments_donor_signal",
+        )
         self.assertIn("COPD-Non Smoker", figure_module.metric_effect_text(effects))
         self.assertEqual(
             figure_module.stable_jitter("P1"),

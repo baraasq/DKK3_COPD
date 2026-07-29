@@ -22,6 +22,7 @@ METRICS = [
     "fraction_dkk3_above_geometric_loq",
     "fraction_dkk3_above_arithmetic_loq",
 ]
+INFERENCE_COMPARTMENTS = {"airway", "parenchyma", "vessel"}
 
 
 def read_csv(path: Path) -> list[dict]:
@@ -252,6 +253,8 @@ def main() -> int:
 
     failures = []
     for result in primary_results:
+        if result["compartment_guess"] not in INFERENCE_COMPARTMENTS:
+            continue
         if result["n_copd_donors"] < 2 or result["n_control_donors"] < 2:
             failures.append(
                 f"Too few donors for {result['compartment_guess']} "

@@ -15,6 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import ensure_results_dirs, load_config
 
 
+COMPARTMENTS_FOR_DIAGNOSTIC_SUMMARY = {"airway", "parenchyma", "vessel", "unknown"}
+
+
 def read_csv(path: Path) -> list[dict]:
     with path.open(newline="", encoding="utf-8-sig") as handle:
         return list(csv.DictReader(handle))
@@ -146,7 +149,7 @@ def primary_rows(rows: list[dict]) -> list[dict]:
         for row in rows
         if as_bool(row.get("include_qc"))
         and row.get("diagnosis_group") in {"COPD", "Control"}
-        and row.get("compartment_guess") in {"airway", "parenchyma", "vessel"}
+        and row.get("compartment_guess") in COMPARTMENTS_FOR_DIAGNOSTIC_SUMMARY
         and row.get("donor_guess") not in (None, "", "unknown")
     ]
 

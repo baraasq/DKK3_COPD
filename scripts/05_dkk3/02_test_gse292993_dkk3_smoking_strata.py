@@ -22,6 +22,7 @@ DEFAULT_PAIRS = [
     ("COPD", "Smoker"),
     ("Smoker", "Non Smoker"),
 ]
+INFERENCE_COMPARTMENTS = {"airway", "parenchyma", "vessel"}
 
 
 def load_effect_module():
@@ -250,6 +251,8 @@ def main() -> int:
 
     failures = []
     for result in primary_results:
+        if result["compartment_guess"] not in INFERENCE_COMPARTMENTS:
+            continue
         if result["n_label_a_donors"] < 2 or result["n_label_b_donors"] < 2:
             failures.append(
                 f"Too few donors for {result['label_a']} vs {result['label_b']} "
