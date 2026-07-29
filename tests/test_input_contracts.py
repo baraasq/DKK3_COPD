@@ -94,6 +94,17 @@ def load_geomx_loq_module():
     return module
 
 
+def load_dkk3_summary_module():
+    path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
+    spec = importlib.util.spec_from_file_location("dkk3_summary", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load DKK3 summary script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def csv_text(fieldnames: list[str], rows: list[dict]) -> str:
     stream = io.StringIO()
     writer = csv.DictWriter(stream, fieldnames=fieldnames)
@@ -411,6 +422,60 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(summary[0]["n_include_qc"], 1)
         self.assertEqual(summary[0]["n_dkk3_above_geometric_loq"], 1)
         self.assertEqual(summary[0]["n_dkk3_above_arithmetic_loq"], 0)
+
+    def test_dkk3_summary_enriches_and_counts_donors(self):
+        dkk3_module = load_dkk3_summary_module()
+        rows = dkk3_module.enrich_roi_rows(
+            [
+                {
+                    "include_qc": "True",
+                    "diagnosis_group": "COPD",
+                    "compartment_guess": "parenchyma",
+                    "donor_guess": "P1",
+                    "dkk3_count": "10",
+                    "total_code_counts": "1000",
+                    "dkk3_above_geometric_loq": "True",
+                    "dkk3_above_arithmetic_loq": "False",
+                },
+                {
+                    "include_qc": "False",
+                    "diagnosis_group": "COPD",
+                    "compartment_guess": "parenchyma",
+                    "donor_guess": "P1",
+                    "dkk3_count": "100",
+                    "total_code_counts": "1000",
+                    "dkk3_above_geometric_loq": "True",
+                    "dkk3_above_arithmetic_loq": "True",
+                },
+                {
+                    "include_qc": "True",
+                    "diagnosis_group": "Control",
+                    "compartment_guess": "airway",
+                    "donor_guess": "P2",
+                    "dkk3_count": "0",
+                    "total_code_counts": "1000",
+                    "dkk3_above_geometric_loq": "False",
+                    "dkk3_above_arithmetic_loq": "False",
+                },
+            ]
+        )
+        primary = dkk3_module.primary_rows(rows)
+        summary = dkk3_module.summarize_group(
+            primary, ["diagnosis_group", "compartment_guess"]
+        )
+        donor_counts = dkk3_module.donor_counts_by_diagnosis(primary)
+
+        self.assertEqual(len(primary), 2)
+        self.assertAlmostEqual(rows[0]["dkk3_cpm"], 10000)
+        copd_summary = next(row for row in summary if row["diagnosis_group"] == "COPD")
+        self.assertEqual(copd_summary["n_dkk3_above_geometric_loq"], 1)
+        self.assertEqual(
+            donor_counts,
+            [
+                {"diagnosis_group": "COPD", "n_donors": 1},
+                {"diagnosis_group": "Control", "n_donors": 1},
+            ],
+        )
 
 
 if __name__ == "__main__":

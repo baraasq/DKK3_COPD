@@ -143,3 +143,24 @@ The LOQ step keeps two background calls side by side: a geometric negative-probe
 LOQ using `exp(mean(log(negative + 1)) + 2*sd(log(negative + 1))) - 1`, and an
 arithmetic `mean + 2*sd` call. Do not discard low-DKK3 ROIs automatically from
 expression modeling; use these flags to interpret detectability and sensitivity.
+
+## GSE292993 DKK3 summaries
+
+After QC and LOQ calling, summarize DKK3 at ROI and donor-compartment levels:
+
+```bash
+python scripts/05_dkk3/00_summarize_gse292993_dkk3.py --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_dkk3_signal_summary.json`
+- `results/tables/gse292993_dkk3_roi_signal.csv`
+- `results/tables/gse292993_dkk3_primary_roi_by_group.csv`
+- `results/tables/gse292993_dkk3_donor_compartment_summary.csv`
+- `results/tables/gse292993_dkk3_donor_overall_summary.csv`
+
+The primary summary keeps QC-passing ROIs with known COPD/control labels,
+airway/parenchyma/vessel compartments, and known donor IDs. ROI summaries are
+descriptive; donor-compartment summaries are the unit to carry forward into
+inference.
