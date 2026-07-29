@@ -209,6 +209,27 @@ audit will report that it is counts-only and not ready for deconvolution. In
 that case, provide an annotated `.h5ad` with a cell-type column via
 `--reference-h5ad` and, if needed, `--cell-type-column`.
 
+If the Zenodo Scanpy workflow is present but no final annotated `.h5ad` was
+deposited, inspect the authors' notebooks for read/write paths and annotation
+clues:
+
+```bash
+python scripts/06_celltype/02_inspect_gse302339_scanpy_notebooks.py --strict
+```
+
+This writes:
+
+- `results/meta/gse302339_scanpy_notebook_inspection_summary.json`
+- `results/tables/gse302339_scanpy_notebook_summary.csv`
+- `results/tables/gse302339_scanpy_notebook_code_matches.csv`
+
+Use this after the scRNA reference audit fails with a missing `.h5ad`. It scans
+only notebook code cells, so embedded UMAP/dotplot image payloads are ignored.
+Notebooks mentioning `write_h5ad` or `.write` are the best candidates for
+reconstructing an annotated reference; notebooks with only `read_10x_h5`,
+`leiden`, and marker-gene terms are likely annotation workflow notebooks rather
+than deposited reference objects.
+
 ## GSE292993 DKK3 summaries
 
 After QC and LOQ calling, summarize DKK3 at ROI and donor-compartment levels:

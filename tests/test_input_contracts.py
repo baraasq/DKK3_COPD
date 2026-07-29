@@ -139,6 +139,17 @@ def load_deconv_module():
     return module
 
 
+def load_scanpy_notebook_inspection_module():
+    path = ROOT / "scripts" / "06_celltype" / "02_inspect_gse302339_scanpy_notebooks.py"
+    spec = importlib.util.spec_from_file_location("scanpy_notebook_inspection", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load Scanpy notebook inspection script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -717,6 +728,55 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(list(metadata), ["GSM1"])
         self.assertEqual(donor_rows[0]["median_fraction_fibroblast"], 0.8)
         self.assertAlmostEqual(correlations[0]["spearman_rho"], 1.0)
+
+    def test_scanpy_notebook_inspection_ignores_outputs_and_finds_annotation_clues(self):
+        notebook_module = load_scanpy_notebook_inspection_module()
+        notebook = {
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "adata = sc.read_10x_h5('GSM1_filtered_feature_bc_matrix.h5')\n",
+                    ],
+                    "outputs": [
+                        {
+                            "data": {
+                                "image/png": "cell_type marker_gene leiden read_h5ad"
+                            }
+                        }
+                    ],
+                },
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "marker_gene_dict = {'fibroblast': ['COL1A1']}\n",
+                        "adata.obs['cell_type'] = adata.obs['leiden'].map(labels)\n",
+                    ],
+                },
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "adata.write_h5ad('atlas_full_annotated.h5ad')\n",
+                    ],
+                },
+            ]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            zip_path = Path(directory) / "scanpy_workflow.zip"
+            with zipfile.ZipFile(zip_path, mode="w") as archive:
+                archive.writestr("2_celltype_annotation.ipynb", json.dumps(notebook))
+            overall, summaries, matches = notebook_module.summarize_archive(
+                zip_path, notebook_module.DEFAULT_TERMS
+            )
+
+        self.assertEqual(overall["n_notebooks"], 1)
+        self.assertEqual(
+            overall["notebooks_with_write_h5ad_or_write"],
+            ["2_celltype_annotation.ipynb"],
+        )
+        self.assertTrue(summaries[0]["has_celltype_or_annotation_terms"])
+        self.assertIn("atlas_full_annotated.h5ad", summaries[0]["mentioned_paths"])
+        self.assertTrue(any("marker_gene_dict" in row["relevant_lines"] for row in matches))
 
     def test_dkk3_summary_enriches_and_counts_donors(self):
         dkk3_module = load_dkk3_summary_module()
