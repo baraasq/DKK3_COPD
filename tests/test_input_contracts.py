@@ -161,6 +161,17 @@ def load_annotation_code_export_module():
     return module
 
 
+def load_author_celltype_map_module():
+    path = ROOT / "scripts" / "06_celltype" / "04_extract_gse302339_author_celltype_maps.py"
+    spec = importlib.util.spec_from_file_location("author_celltype_maps", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load author celltype map extraction script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -830,6 +841,47 @@ class InputContractTests(unittest.TestCase):
         self.assertTrue(rows[0]["has_celltype_assignment"])
         self.assertIn("# %% [cell 0]", exported)
         self.assertIn("celldict_level1", exported)
+
+    def test_author_celltype_map_parser_tracks_reused_celldict_contexts(self):
+        map_module = load_author_celltype_map_module()
+        text = """
+celldict_level1 = {
+    'Parenchyma': ['0', '1'],
+    'Endothelial': ['2'],
+}
+adata.obs['celltype_level1']=np.NaN
+for i in celldict_level1.keys():
+    pass
+
+celldict_level1 = {
+    'AT1': ['0'],
+    'AT2': ['1'],
+    'Fibroblast': ['2', '3'],
+}
+parenchyma.obs['parenchyma_celltype_level1']=np.NaN
+for i in celldict_level1.keys():
+    pass
+"""
+        rows, blocks = map_module.extract_celltype_maps_from_text(
+            text,
+            source="synthetic.py",
+        )
+        parenchyma_rows = [
+            row
+            for row in rows
+            if row["assigned_obs_column"] == "parenchyma_celltype_level1"
+        ]
+
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks[0]["assigned_object"], "adata")
+        self.assertEqual(blocks[1]["assigned_object"], "parenchyma")
+        self.assertEqual(len(parenchyma_rows), 3)
+        self.assertEqual(
+            next(row for row in parenchyma_rows if row["celltype_label"] == "Fibroblast")[
+                "cluster_ids"
+            ],
+            "2;3",
+        )
 
     def test_dkk3_summary_enriches_and_counts_donors(self):
         dkk3_module = load_dkk3_summary_module()

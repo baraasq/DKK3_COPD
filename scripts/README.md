@@ -252,6 +252,23 @@ Use them to recover the authors' cluster-to-cell-type dictionaries and the
 pickle-style intermediate object names before deciding whether to reconstruct
 their annotated scRNA reference or switch to an external annotated lung atlas.
 
+To turn the exported author `celldict_*` assignments into tidy cluster-to-cell
+type mapping tables:
+
+```bash
+python scripts/06_celltype/04_extract_gse302339_author_celltype_maps.py --strict
+```
+
+This writes:
+
+- `results/meta/gse302339_author_celltype_map_summary.json`
+- `results/tables/gse302339_author_celltype_cluster_maps.csv`
+- `results/tables/gse302339_author_celltype_dictionary_blocks.csv`
+
+The parser records the downstream `.obs` column assigned after each dictionary.
+For the pneumocyte/fibroblast question, inspect rows where
+`assigned_obs_column == parenchyma_celltype_level1`.
+
 ## GSE292993 DKK3 summaries
 
 After QC and LOQ calling, summarize DKK3 at ROI and donor-compartment levels:
