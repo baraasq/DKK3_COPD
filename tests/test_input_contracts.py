@@ -172,6 +172,17 @@ def load_author_celltype_map_module():
     return module
 
 
+def load_author_signature_module():
+    path = ROOT / "scripts" / "06_celltype" / "05_build_gse302339_author_signatures.py"
+    spec = importlib.util.spec_from_file_location("author_signatures", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load author signature builder script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -210,6 +221,17 @@ def load_dkk3_figure_module():
     spec = importlib.util.spec_from_file_location("dkk3_figure", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("Could not load DKK3 figure script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_cell_composition_figure_module():
+    path = ROOT / "scripts" / "09_figures" / "01_plot_gse292993_cell_composition_compartments.py"
+    spec = importlib.util.spec_from_file_location("cell_composition_figure", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load cell-composition figure script.")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -883,6 +905,25 @@ for i in celldict_level1.keys():
             "2;3",
         )
 
+    def test_author_signature_builder_validates_labels_and_anndata_like_objects(self):
+        signature_module = load_author_signature_module()
+
+        class FakeAdata:
+            obs = {"celltype": ["AT1"]}
+            var = {"gene": ["AGER"]}
+            X = [[1]]
+            n_obs = 1
+
+        fake = FakeAdata()
+
+        self.assertTrue(signature_module.valid_label("AT1"))
+        self.assertFalse(signature_module.valid_label("nan"))
+        self.assertFalse(signature_module.valid_label(""))
+        self.assertTrue(signature_module.has_anndata_interface(fake))
+        self.assertIs(signature_module.coerce_anndata_like({"adata": fake}), fake)
+        with self.assertRaises(TypeError):
+            signature_module.coerce_anndata_like({"not_adata": object()})
+
     def test_dkk3_summary_enriches_and_counts_donors(self):
         dkk3_module = load_dkk3_summary_module()
         rows = dkk3_module.enrich_roi_rows(
@@ -1122,6 +1163,76 @@ for i in celldict_level1.keys():
         self.assertEqual(
             figure_module.stable_jitter("P1"),
             figure_module.stable_jitter("P1"),
+        )
+
+    def test_cell_composition_helpers_make_donor_balanced_summary(self):
+        figure_module = load_cell_composition_figure_module()
+        manifest = [
+            {"cell_type": "AT1", "fraction_column": "fraction_at1"},
+            {"cell_type": "Fibroblast", "fraction_column": "fraction_fibroblast"},
+        ]
+        roi_rows = [
+            {
+                "donor_guess": "D1",
+                "diagnosis_guess": "COPD",
+                "fraction_at1": "0.2",
+                "fraction_fibroblast": "0.8",
+            },
+            {
+                "donor_guess": "D1",
+                "diagnosis_guess": "COPD",
+                "fraction_at1": "0.4",
+                "fraction_fibroblast": "0.6",
+            },
+            {
+                "donor_guess": "D2",
+                "diagnosis_guess": "Non Smoker",
+                "fraction_at1": "0.9",
+                "fraction_fibroblast": "0.1",
+            },
+            {
+                "donor_guess": "D3",
+                "diagnosis_guess": "unknown",
+                "fraction_at1": "0.5",
+                "fraction_fibroblast": "0.5",
+            },
+        ]
+        donor_rows = figure_module.donor_fraction_rows(
+            roi_rows=roi_rows,
+            manifest_rows=manifest,
+            compartment="parenchyma",
+        )
+        summary = figure_module.composition_summary_rows(
+            donor_rows,
+            manifest_by_compartment={"parenchyma": manifest},
+            compartments=["parenchyma"],
+            labels=["Non Smoker", "COPD"],
+        )
+        lookup = figure_module.value_lookup(summary)
+        stacked = figure_module.stack_values(
+            lookup,
+            compartment="parenchyma",
+            diagnosis="COPD",
+            cell_types=["AT1", "Fibroblast"],
+            normalize=True,
+        )
+
+        self.assertEqual(figure_module.parse_compartments("all"), ["airway", "parenchyma", "vessel"])
+        self.assertEqual(len(donor_rows), 2)
+        self.assertAlmostEqual(
+            next(row for row in donor_rows if row["donor_guess"] == "D1")[
+                "mean_fraction_at1"
+            ],
+            0.3,
+        )
+        self.assertAlmostEqual(
+            lookup[("parenchyma", "COPD", "Fibroblast")],
+            0.7,
+        )
+        self.assertAlmostEqual(sum(stacked), 1.0)
+        self.assertEqual(
+            figure_module.celltype_order({"parenchyma": manifest}),
+            ["AT1", "Fibroblast"],
         )
 
 

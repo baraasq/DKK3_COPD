@@ -269,6 +269,63 @@ The parser records the downstream `.obs` column assigned after each dictionary.
 For the pneumocyte/fibroblast question, inspect rows where
 `assigned_obs_column == parenchyma_celltype_level1`.
 
+After the authors' annotation workflow has been rerun, or if the pickle/H5AD
+artifact is otherwise available, build a GeoMx-compatible parenchymal signature
+matrix from the reconstructed author object:
+
+```bash
+python scripts/06_celltype/05_build_gse302339_author_signatures.py --strict
+```
+
+By default this expects `output/parenchyma_harmony_annotated_cr8` and the
+`parenchyma_celltype_level1` column, then requires `AT1`, `AT2`, and
+`Fibroblast` to be present in the emitted signature. It writes:
+
+- `results/meta/gse302339_author_signature_reference_summary.json`
+- `results/tables/gse302339_author_signature_celltype_counts.csv`
+- `results/tables/gse302339_author_signature_manifest.csv`
+- `data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv`
+- `data/external/scrna_reference/gse302339_author_parenchyma_celltype_level1.h5ad`
+
+Use that signature matrix with NNLS deconvolution:
+
+```bash
+python scripts/06_celltype/01_deconvolve_gse292993_parenchyma_nnls.py \
+  --signature-csv data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv \
+  --strict
+```
+
+To project the same reference signatures onto all three GeoMx ROI compartments,
+run the NNLS step once per compartment:
+
+```bash
+for compartment in airway parenchyma vessel; do
+  python scripts/06_celltype/01_deconvolve_gse292993_parenchyma_nnls.py \
+    --compartment "$compartment" \
+    --signature-csv data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv \
+    --strict
+done
+```
+
+Then plot donor-balanced cell composition across airway, parenchyma, and vessel
+ROIs:
+
+```bash
+python scripts/09_figures/01_plot_gse292993_cell_composition_compartments.py --strict
+```
+
+This writes:
+
+- `results/figures/gse292993_cell_composition/gse292993_nnls_cell_composition_all_compartments_stacked`
+- `results/figures/gse292993_cell_composition/gse292993_nnls_cell_composition_all_compartments_heatmap`
+- `results/tables/gse292993_nnls_cell_composition_all_compartments_summary.csv`
+- `results/tables/gse292993_nnls_cell_composition_all_compartments_donor_means.csv`
+- `results/meta/gse292993_nnls_cell_composition_all_compartments_plot_summary.json`
+
+The plotting script first averages ROI fractions within each donor, then
+averages donors within each diagnosis/compartment. This makes the visual less
+sensitive to the larger COPD ROI count.
+
 ## GSE292993 DKK3 summaries
 
 After QC and LOQ calling, summarize DKK3 at ROI and donor-compartment levels:
