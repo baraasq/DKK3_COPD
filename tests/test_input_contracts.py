@@ -1391,6 +1391,34 @@ for i in celldict_level1.keys():
             self.assertIn("s61", {row["batch"] for row in expanded})
             self.assertIn("0", {row["batch"] for row in expanded})
 
+    def test_meta_cr8_reconstruction_drops_ambiguous_batch_aliases(self):
+        module = load_meta_cr8_reconstruction_module()
+        rows = [
+            {
+                "sample": "s61",
+                "sample_name": "s61",
+                "sample_number": "61",
+                "batch": "s61",
+                "geo_accession": "GSM1",
+                "cellranger_h5_filename": "GSM1_s61_filtered_feature_bc_matrix.h5",
+            },
+            {
+                "sample": "s0",
+                "sample_name": "s0",
+                "sample_number": "0",
+                "batch": "s0",
+                "geo_accession": "GSM2",
+                "cellranger_h5_filename": "GSM2_s0_filtered_feature_bc_matrix.h5",
+            },
+        ]
+        expanded = module.expand_sample_name_alias_rows(rows)
+        batches = [row["batch"] for row in expanded]
+
+        self.assertNotIn("0", batches)
+        self.assertEqual(module.duplicated_values(expanded, "batch"), [])
+        self.assertIn("s61", batches)
+        self.assertIn("s0", batches)
+
 
 if __name__ == "__main__":
     unittest.main()

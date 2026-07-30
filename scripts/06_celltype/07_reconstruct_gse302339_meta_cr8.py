@@ -235,15 +235,24 @@ def sample_batch_aliases(row: dict, *, row_index: int | None = None) -> list[str
 
 
 def expand_sample_name_alias_rows(rows: list[dict]) -> list[dict]:
-    expanded: list[dict] = []
-    seen: set[tuple[str, str]] = set()
+    alias_counts: dict[str, int] = {}
+    row_aliases: list[tuple[dict, list[str]]] = []
     for row_index, row in enumerate(rows):
+        aliases = sample_batch_aliases(row, row_index=row_index)
+        row_aliases.append((row, aliases))
+        for alias in set(aliases):
+            alias_counts[alias] = alias_counts.get(alias, 0) + 1
+
+    expanded: list[dict] = []
+    seen: set[str] = set()
+    for row, aliases in row_aliases:
         canonical = str(row.get("sample", row.get("sample_name", ""))).strip()
-        for alias in sample_batch_aliases(row, row_index=row_index):
-            key = (str(alias), str(row.get("geo_accession", "")))
-            if key in seen:
+        for alias in aliases:
+            if alias_counts.get(alias, 0) != 1:
                 continue
-            seen.add(key)
+            if alias in seen:
+                continue
+            seen.add(alias)
             alias_row = dict(row)
             alias_row["batch"] = alias
             alias_row["batch_alias"] = alias
@@ -279,6 +288,15 @@ def merge_metadata(h5_rows: list[dict], soft_rows: dict[str, dict]) -> list[dict
                 row.setdefault(key, value)
         merged.append(add_alias_columns(row))
     return merged
+
+
+def duplicated_values(rows: list[dict], column: str) -> list[str]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = str(row.get(column, "")).strip()
+        if value:
+            counts[value] = counts.get(value, 0) + 1
+    return sorted(value for value, count in counts.items() if count > 1)
 
 
 def download_soft(url: str, destination: Path) -> Path:
@@ -368,6 +386,13 @@ def main() -> int:
         else expand_sample_name_alias_rows(base_output_rows)
     )
     output_columns = sorted({key for row in output_rows for key in row})
+    duplicated_batch_values = duplicated_values(output_rows, "batch")
+    if duplicated_batch_values:
+        failures.append(
+            "Reconstructed meta_cr8.csv has duplicated batch keys; this would "
+            f"make pd.merge(old_meta, meta, on='batch') unsafe. First duplicates: "
+            f"{duplicated_batch_values[:20]}"
+        )
 
     code_paths = sorted(project_path(".").glob(args.code_glob))
     expected_columns = infer_expected_meta_columns(code_paths)
@@ -437,6 +462,10 @@ def main() -> int:
         "n_base_meta_rows": len(base_output_rows),
         "sample_name_alias_rows_enabled": not args.no_sample_name_alias_rows,
         "n_meta_rows_written": len(output_rows),
+        "n_unique_batch_values": len(
+            {str(row.get("batch", "")).strip() for row in output_rows if row.get("batch")}
+        ),
+        "duplicated_batch_values": duplicated_batch_values,
         "output": str(output_path),
         "output_exists": output_path.exists(),
         "soft_path": str(soft_path) if soft_path else None,
@@ -451,6 +480,7 @@ def main() -> int:
         "manifest_path": str(manifest_path),
         "ready_for_author_preprocessing": output_path.exists()
         and not missing_expected_columns
+        and not duplicated_batch_values
         and bool(output_rows),
         "failures": failures,
     }
