@@ -345,6 +345,20 @@ are missing. It writes:
 - `results/tables/gse302339_author_dependency_manifest.csv`
 - `results/tables/gse302339_author_dependency_source_manifest.csv`
 
+If the installed Scanpy/HarmonyPy combination raises an `X_pca_harmony` shape
+mismatch, patch the exported preprocessing code to call HarmonyPy directly and
+validate the output orientation:
+
+```bash
+python scripts/06_celltype/09_patch_gse302339_author_preprocessing_runtime.py --strict
+```
+
+This modifies only
+`intermediate/gse302339_scanpy_workflow_code/1_preprocessing_doublet_detection.py`
+and writes:
+
+- `results/meta/gse302339_author_preprocessing_patch_summary.json`
+
 After the authors' annotation workflow has been rerun, or if the pickle/H5AD
 artifact is otherwise available, build a GeoMx-compatible parenchymal signature
 matrix from the reconstructed author object:

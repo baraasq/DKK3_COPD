@@ -228,6 +228,17 @@ def load_author_dependency_audit_module():
     return module
 
 
+def load_author_preprocessing_patch_module():
+    path = ROOT / "scripts" / "06_celltype" / "09_patch_gse302339_author_preprocessing_runtime.py"
+    spec = importlib.util.spec_from_file_location("author_preprocessing_patch", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load author preprocessing patch script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -1518,6 +1529,27 @@ for i in celldict_level1.keys():
                 [{"module": "harmonypy", "package": "harmonypy"}]
             ).endswith("harmonypy")
         )
+
+    def test_author_preprocessing_patch_replaces_harmony_wrapper_once(self):
+        module = load_author_preprocessing_patch_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "1_preprocessing_doublet_detection.py"
+            path.write_text(
+                "kwargs = {'max_iter_harmony': 20}\n"
+                "sce.pp.harmony_integrate(adata, 'batch', **kwargs)\n"
+                "adata.obsm['X_pca'] = adata.obsm['X_pca_harmony']\n",
+                encoding="utf-8",
+            )
+
+            first = module.patch_preprocessing_code(path)
+            second = module.patch_preprocessing_code(path)
+            patched = path.read_text(encoding="utf-8")
+
+            self.assertTrue(first["patched"])
+            self.assertEqual(second["reason"], "already_patched")
+            self.assertIn("CODEx-PATCH: run HarmonyPy directly", patched)
+            self.assertNotIn("sce.pp.harmony_integrate", patched)
+            self.assertIn("z_corr.T.shape == expected_shape", patched)
 
 
 if __name__ == "__main__":
