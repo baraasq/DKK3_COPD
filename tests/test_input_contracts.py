@@ -107,6 +107,17 @@ def load_geomx_qc_plot_module():
     return module
 
 
+def load_geomx_phenotype_label_audit_module():
+    path = ROOT / "scripts" / "03_geomx_qc" / "06_audit_gse292993_phenotype_labels.py"
+    spec = importlib.util.spec_from_file_location("geomx_phenotype_label_audit", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load GeoMx phenotype-label audit script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_geomx_matrix_module():
     path = ROOT / "scripts" / "04_normalization" / "00_build_gse292993_geomx_wta_matrix.py"
     spec = importlib.util.spec_from_file_location("geomx_matrix", path)
@@ -638,6 +649,42 @@ class InputContractTests(unittest.TestCase):
         self.assertIsNone(
             summary["standard_ngs_like_metrics_available"]["mitochondrial_percent"]
         )
+
+    def test_geomx_phenotype_label_audit_detects_direct_and_proxy_labels(self):
+        audit_module = load_geomx_phenotype_label_audit_module()
+        columns = [
+            "characteristics_condition",
+            "characteristics_laa950",
+            "characteristics_gold",
+            "characteristics_lobe_emphysema",
+            "diagnosis_guess",
+            "donor_guess",
+        ]
+        matches = audit_module.matching_columns(columns)
+        support = audit_module.classify_label_support(matches)
+        rows = [
+            {
+                "donor_guess": "D1",
+                "characteristics_laa950": "2",
+                "characteristics_lobe_emphysema": "NE-COPD",
+            },
+            {
+                "donor_guess": "D2",
+                "characteristics_laa950": "16",
+                "characteristics_lobe_emphysema": "E-COPD",
+            },
+        ]
+        thresholds = audit_module.threshold_counts(
+            rows, "characteristics_laa950", [5.0, 15.0]
+        )
+
+        self.assertIn("characteristics_lobe_emphysema", matches["emphysema_or_laa"])
+        self.assertEqual(
+            support["status"],
+            "direct_emphysema_label_candidate_present",
+        )
+        self.assertEqual(thresholds[0]["n_donors_ge_threshold"], 1)
+        self.assertEqual(thresholds[1]["n_rois_ge_threshold"], 1)
 
     def test_geomx_wta_matrix_feature_aggregation(self):
         matrix_module = load_geomx_matrix_module()

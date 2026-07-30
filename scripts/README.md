@@ -149,6 +149,22 @@ labeled `unknown diagnosis` or `unknown compartment` are retained here only for
 QC auditing; they indicate unresolved GEO metadata labels, not a biological
 group to interpret.
 
+To audit whether the GeoMx ROI metadata has direct emphysema labels or only
+proxy fields such as LAA950/GOLD/FEV1:
+
+```bash
+python scripts/03_geomx_qc/06_audit_gse292993_phenotype_labels.py \
+  --include-qc-only \
+  --strict
+```
+
+This writes:
+
+- `results/meta/gse292993_phenotype_label_audit_summary.json`
+- `results/tables/gse292993_phenotype_label_column_summary.csv`
+- `results/tables/gse292993_phenotype_label_group_counts.csv`
+- `results/tables/gse292993_laa_threshold_sensitivity_counts.csv`
+
 After ROI QC, compute DKK3 detectability relative to negative-probe background:
 
 ```bash
