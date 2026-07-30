@@ -253,9 +253,10 @@ pickle-style intermediate object names before deciding whether to reconstruct
 their annotated scRNA reference or switch to an external annotated lung atlas.
 Notebook-only shell/magic lines such as `!rm ...` or `%matplotlib` are replaced
 with no-op `pass` lines during export so the files can be syntax-checked with
-`python -m py_compile`. The unused optional `scvi` import/seed lines in the
-preprocessing notebook are also skipped during export because they can conflict
-with newer `anndata` versions and are not used elsewhere in the exported code.
+`python -m py_compile`. The unused optional `scvi` import/seed and `mudata`
+import lines in the preprocessing notebook are also skipped during export
+because they can conflict with the active environment and are not used elsewhere
+in the exported preprocessing code.
 
 To turn the exported author `celldict_*` assignments into tidy cluster-to-cell
 type mapping tables:
@@ -273,6 +274,20 @@ This writes:
 The parser records the downstream `.obs` column assigned after each dictionary.
 For the pneumocyte/fibroblast question, inspect rows where
 `assigned_obs_column == parenchyma_celltype_level1`.
+
+Before rerunning the authors' preprocessing notebook export, prepare the small
+`input/` helper file it expects for ribosomal-content QC:
+
+```bash
+python scripts/06_celltype/06_prepare_gse302339_author_input_helpers.py --strict
+```
+
+This reconstructs `input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv` from the
+extracted Cell Ranger feature names using standard human ribosomal prefixes
+(`RPL`, `RPS`, `MRPL`, and `MRPS`). It writes:
+
+- `results/meta/gse302339_author_input_helper_summary.json`
+- `results/tables/gse302339_ribosomal_gene_helper_manifest.csv`
 
 After the authors' annotation workflow has been rerun, or if the pickle/H5AD
 artifact is otherwise available, build a GeoMx-compatible parenchymal signature

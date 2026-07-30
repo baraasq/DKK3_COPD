@@ -90,6 +90,11 @@ def sanitize_notebook_source(source: str) -> tuple[str, int]:
                 f"{indent}pass  # NOTEBOOK-OPTIONAL-SCVI skipped for current environment: {stripped[:140]}"
             )
             n_changed += 1
+        elif stripped == "import mudata as mu":
+            sanitized.append(
+                f"{indent}pass  # NOTEBOOK-OPTIONAL-MUDATA skipped for current environment: {stripped[:140]}"
+            )
+            n_changed += 1
         else:
             sanitized.append(line)
     return "\n".join(sanitized), n_changed

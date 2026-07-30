@@ -184,6 +184,17 @@ def load_author_signature_module():
     return module
 
 
+def load_author_input_helper_module():
+    path = ROOT / "scripts" / "06_celltype" / "06_prepare_gse302339_author_input_helpers.py"
+    spec = importlib.util.spec_from_file_location("author_input_helpers", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load author input helper script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -836,6 +847,7 @@ class InputContractTests(unittest.TestCase):
                     "source": [
                         "import scvi\n",
                         "scvi.settings.seed = 0\n",
+                        "import mudata as mu\n",
                         "!rm -r \"input/data_cellranger8/.DS_Store\"\n",
                         "celldict_level1 = {'Parenchyma': ['0', '1']}\n",
                         "adata.obs['celltype_level1'] = 'Parenchyma'\n",
@@ -865,10 +877,11 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(summary["n_selected_notebooks"], 1)
         self.assertEqual(summary["cells_with_celldict"], 1)
         self.assertEqual(summary["cells_with_open_output"], 1)
-        self.assertEqual(summary["n_notebook_only_lines_commented"], 3)
+        self.assertEqual(summary["n_notebook_only_lines_commented"], 4)
         self.assertTrue(rows[0]["has_celltype_assignment"])
         self.assertIn("# %% [cell 0]", exported)
         self.assertIn("pass  # NOTEBOOK-OPTIONAL-SCVI", exported)
+        self.assertIn("pass  # NOTEBOOK-OPTIONAL-MUDATA", exported)
         self.assertIn("pass  # NOTEBOOK-ONLY: !rm", exported)
         self.assertIn("celldict_level1", exported)
 
@@ -1242,6 +1255,17 @@ for i in celldict_level1.keys():
             figure_module.celltype_order({"parenchyma": manifest}),
             ["AT1", "Fibroblast"],
         )
+
+    def test_author_input_helper_identifies_ribosomal_prefixes(self):
+        helper_module = load_author_input_helper_module()
+        pattern = helper_module.ribosomal_gene_pattern(("RPL", "RPS", "MRPL", "MRPS"))
+
+        self.assertTrue(pattern.match("RPL13A"))
+        self.assertTrue(pattern.match("RPS27"))
+        self.assertTrue(pattern.match("MRPL12"))
+        self.assertTrue(pattern.match("MRPS18B"))
+        self.assertFalse(pattern.match("DKK3"))
+        self.assertFalse(pattern.match("RPRD1A"))
 
 
 if __name__ == "__main__":
