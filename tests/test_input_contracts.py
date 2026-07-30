@@ -206,6 +206,17 @@ def load_meta_cr8_reconstruction_module():
     return module
 
 
+def load_author_dependency_audit_module():
+    path = ROOT / "scripts" / "06_celltype" / "08_audit_gse302339_author_dependencies.py"
+    spec = importlib.util.spec_from_file_location("author_dependency_audit", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load author dependency audit script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -1424,6 +1435,42 @@ for i in celldict_level1.keys():
         self.assertEqual(module.duplicated_values(expanded, "batch"), [])
         self.assertIn("s61", batches)
         self.assertIn("s0", batches)
+
+    def test_author_dependency_audit_finds_imports_and_harmony_extra(self):
+        module = load_author_dependency_audit_module()
+        source = "\n".join(
+            [
+                "import numpy as np",
+                "import scanpy.external as sce",
+                "from scipy.stats import median_abs_deviation",
+                "sce.pp.harmony_integrate(adata, 'batch')",
+            ]
+        )
+        imports = module.imported_modules_from_source(source)
+        indirect = module.indirect_modules_from_source(source)
+        rows, source_rows = module.dependency_rows(
+            [
+                {
+                    "source_id": "workflow.py",
+                    "source_kind": "exported_py",
+                    "text": source,
+                }
+            ],
+            optional_modules=set(),
+        )
+        modules = {row["module"] for row in rows}
+
+        self.assertIn("numpy", imports)
+        self.assertIn("scanpy", imports)
+        self.assertIn("scipy", imports)
+        self.assertIn("harmonypy", {row["module"] for row in indirect})
+        self.assertIn("harmonypy", modules)
+        self.assertEqual(source_rows[0]["indirect_modules"], "harmonypy")
+        self.assertTrue(
+            module.install_command(
+                [{"module": "harmonypy", "package": "harmonypy"}]
+            ).endswith("harmonypy")
+        )
 
 
 if __name__ == "__main__":

@@ -313,6 +313,22 @@ table. It writes:
 - `results/meta/gse302339_meta_cr8_reconstruction_summary.json`
 - `results/tables/gse302339_meta_cr8_reconstruction_manifest.csv`
 
+Before rerunning long author notebook exports, audit the active Python
+environment for imported and indirect runtime dependencies:
+
+```bash
+python scripts/06_celltype/08_audit_gse302339_author_dependencies.py --strict
+```
+
+The dependency audit scans the exported notebook `.py` files, adds known
+runtime-only extras such as `harmonypy` when `harmony_integrate` is present,
+and prints a `python -m pip install ...` command for any required modules that
+are missing. It writes:
+
+- `results/meta/gse302339_author_dependency_audit_summary.json`
+- `results/tables/gse302339_author_dependency_manifest.csv`
+- `results/tables/gse302339_author_dependency_source_manifest.csv`
+
 After the authors' annotation workflow has been rerun, or if the pickle/H5AD
 artifact is otherwise available, build a GeoMx-compatible parenchymal signature
 matrix from the reconstructed author object:
