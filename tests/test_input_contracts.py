@@ -1373,6 +1373,8 @@ for i in celldict_level1.keys():
             self.assertEqual(merged[0]["condition"], "COPD")
             self.assertEqual(merged[0]["patient"], "P1")
             self.assertEqual(merged[0]["lobe_emphysema_simple"], "emphysema")
+            self.assertEqual(merged[0]["lobe_emphysema"], "emphysema")
+            self.assertEqual(merged[0]["total_emphysema"], "COPD")
             self.assertEqual(
                 expected,
                 ["condition", "lobe_emphysema_simple", "patient", "sample"],
@@ -1390,6 +1392,10 @@ for i in celldict_level1.keys():
             self.assertIn("GSM9102249", {row["batch"] for row in expanded})
             self.assertIn("s61", {row["batch"] for row in expanded})
             self.assertIn("0", {row["batch"] for row in expanded})
+            self.assertIn(
+                "input/data_cellranger8/GSM9102249_s61",
+                {row["batch"] for row in expanded},
+            )
 
     def test_meta_cr8_reconstruction_drops_ambiguous_batch_aliases(self):
         module = load_meta_cr8_reconstruction_module()

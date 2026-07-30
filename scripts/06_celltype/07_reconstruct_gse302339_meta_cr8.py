@@ -190,6 +190,16 @@ def add_alias_columns(row: dict) -> dict:
     )
     if lobe_emphysema:
         output.setdefault("lobe_emphysema_simple", lobe_emphysema)
+        output.setdefault("lobe_emphysema", lobe_emphysema)
+    total_emphysema = (
+        output.get("total_emphysema")
+        or output.get("characteristics_subject_group")
+        or output.get("characteristics_copd")
+        or output.get("condition")
+        or lobe_emphysema
+    )
+    if total_emphysema:
+        output.setdefault("total_emphysema", total_emphysema)
     return output
 
 
@@ -216,6 +226,7 @@ def sample_batch_aliases(row: dict, *, row_index: int | None = None) -> list[str
         for value in [
             stem,
             filename.removesuffix(".h5"),
+            f"input/data_cellranger8/{stem}",
             f"input/data_cellranger8/{filename}",
         ]:
             if value and value not in aliases:
