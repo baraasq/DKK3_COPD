@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import py_compile
 import gzip
 import importlib.util
 import io
@@ -833,6 +834,7 @@ class InputContractTests(unittest.TestCase):
                 {
                     "cell_type": "code",
                     "source": [
+                        "!rm -r \"input/data_cellranger8/.DS_Store\"\n",
                         "celldict_level1 = {'Parenchyma': ['0', '1']}\n",
                         "adata.obs['celltype_level1'] = 'Parenchyma'\n",
                         "with open('output/adata_harmony_annotated_cr8', 'wb') as file:\n",
@@ -856,12 +858,15 @@ class InputContractTests(unittest.TestCase):
 
             code_file = Path(summary["code_files"][0])
             exported = code_file.read_text(encoding="utf-8")
+            py_compile.compile(str(code_file), doraise=True)
 
         self.assertEqual(summary["n_selected_notebooks"], 1)
         self.assertEqual(summary["cells_with_celldict"], 1)
         self.assertEqual(summary["cells_with_open_output"], 1)
+        self.assertEqual(summary["n_notebook_only_lines_commented"], 1)
         self.assertTrue(rows[0]["has_celltype_assignment"])
         self.assertIn("# %% [cell 0]", exported)
+        self.assertIn("pass  # NOTEBOOK-ONLY: !rm", exported)
         self.assertIn("celldict_level1", exported)
 
     def test_author_celltype_map_parser_tracks_reused_celldict_contexts(self):

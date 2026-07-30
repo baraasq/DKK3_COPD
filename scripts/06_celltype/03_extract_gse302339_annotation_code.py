@@ -59,6 +59,37 @@ def selected_members(members: list[str], patterns: list[str]) -> list[str]:
     ]
 
 
+def sanitize_notebook_source(source: str) -> tuple[str, int]:
+    """Convert common notebook-only syntax to valid no-op Python lines."""
+    lines = source.splitlines()
+    first_nonempty = next((line.strip() for line in lines if line.strip()), "")
+    if first_nonempty.startswith("%%"):
+        sanitized = []
+        n_changed = 0
+        for index, line in enumerate(lines):
+            if not line.strip():
+                sanitized.append(line)
+                continue
+            if index == 0:
+                sanitized.append(f"pass  # NOTEBOOK-CELL-MAGIC skipped: {line.strip()[:180]}")
+            else:
+                sanitized.append(f"# NOTEBOOK-CELL-MAGIC: {line[:180]}")
+            n_changed += 1
+        return "\n".join(sanitized), n_changed
+
+    sanitized = []
+    n_changed = 0
+    for line in lines:
+        stripped = line.lstrip()
+        indent = line[: len(line) - len(stripped)]
+        if stripped.startswith(("!", "%", "?")) or stripped.endswith("?"):
+            sanitized.append(f"{indent}pass  # NOTEBOOK-ONLY: {stripped[:180]}")
+            n_changed += 1
+        else:
+            sanitized.append(line)
+    return "\n".join(sanitized), n_changed
+
+
 def write_csv(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not rows:
@@ -73,6 +104,7 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         "has_marker_dict",
         "has_open_output",
         "has_celltype_assignment",
+        "n_notebook_only_lines_commented",
         "code_file",
     ]
     ordered = [field for field in preferred if field in fieldnames]
@@ -100,12 +132,14 @@ def export_notebook_code(zip_path: Path, member: str, output_dir: Path) -> tuple
         source = cell_source(cell).rstrip()
         if not source:
             continue
+        sanitized_source, n_notebook_only = sanitize_notebook_source(source)
         lowered = source.casefold()
         rows.append(
             {
                 "notebook": member,
                 "cell_index": index,
                 "line_count": len(source.splitlines()),
+                "n_notebook_only_lines_commented": n_notebook_only,
                 "has_celldict": "celldict" in lowered,
                 "has_marker_dict": "marker_gene_dict" in lowered,
                 "has_open_output": "open(" in lowered and "output/" in lowered,
@@ -116,7 +150,7 @@ def export_notebook_code(zip_path: Path, member: str, output_dir: Path) -> tuple
         chunks.extend(
             [
                 f"# %% [cell {index}]",
-                source,
+                sanitized_source,
                 "",
             ]
         )
@@ -151,6 +185,9 @@ def export_annotation_code(
         "cells_with_open_output": sum(bool(row["has_open_output"]) for row in rows),
         "cells_with_celltype_assignment": sum(
             bool(row["has_celltype_assignment"]) for row in rows
+        ),
+        "n_notebook_only_lines_commented": sum(
+            int(row["n_notebook_only_lines_commented"]) for row in rows
         ),
     }
     return summary, rows

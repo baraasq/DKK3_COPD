@@ -251,6 +251,9 @@ Those exported `.py` files are audit artifacts, not cleaned runnable scripts.
 Use them to recover the authors' cluster-to-cell-type dictionaries and the
 pickle-style intermediate object names before deciding whether to reconstruct
 their annotated scRNA reference or switch to an external annotated lung atlas.
+Notebook-only shell/magic lines such as `!rm ...` or `%matplotlib` are replaced
+with no-op `pass` lines during export so the files can be syntax-checked with
+`python -m py_compile`.
 
 To turn the exported author `celldict_*` assignments into tidy cluster-to-cell
 type mapping tables:
