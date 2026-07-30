@@ -1364,6 +1364,7 @@ for i in celldict_level1.keys():
             h5_rows = module.parse_h5_samples(h5_dir)
             soft_rows = module.parse_soft_samples(soft_path)
             merged = module.merge_metadata(h5_rows, soft_rows)
+            expanded = module.expand_sample_name_alias_rows(merged)
             expected = module.infer_expected_meta_columns([code_path])
 
             self.assertEqual(h5_rows[0]["sample"], "s61")
@@ -1376,6 +1377,19 @@ for i in celldict_level1.keys():
                 expected,
                 ["condition", "lobe_emphysema_simple", "patient", "sample"],
             )
+            self.assertIn(
+                "GSM9102249_s61_filtered_feature_bc_matrix.h5",
+                {row["sample_name"] for row in expanded},
+            )
+            self.assertIn("GSM9102249", {row["sample_name"] for row in expanded})
+            self.assertIn("s61", {row["sample_name"] for row in expanded})
+            self.assertIn(
+                "GSM9102249_s61_filtered_feature_bc_matrix.h5",
+                {row["batch"] for row in expanded},
+            )
+            self.assertIn("GSM9102249", {row["batch"] for row in expanded})
+            self.assertIn("s61", {row["batch"] for row in expanded})
+            self.assertIn("0", {row["batch"] for row in expanded})
 
 
 if __name__ == "__main__":

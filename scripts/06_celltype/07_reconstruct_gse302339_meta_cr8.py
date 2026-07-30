@@ -193,6 +193,68 @@ def add_alias_columns(row: dict) -> dict:
     return output
 
 
+def sample_batch_aliases(row: dict, *, row_index: int | None = None) -> list[str]:
+    aliases: list[str] = []
+    for key in [
+        "sample",
+        "sample_id",
+        "sample_name",
+        "orig.ident",
+        "orig_ident",
+        "batch",
+        "geo_accession",
+        "gsm",
+        "cellranger_h5_filename",
+    ]:
+        value = str(row.get(key, "")).strip()
+        if value and value not in aliases:
+            aliases.append(value)
+
+    filename = str(row.get("cellranger_h5_filename", "")).strip()
+    if filename:
+        stem = filename.replace("_filtered_feature_bc_matrix.h5", "")
+        for value in [
+            stem,
+            filename.removesuffix(".h5"),
+            f"input/data_cellranger8/{filename}",
+        ]:
+            if value and value not in aliases:
+                aliases.append(value)
+
+    sample_number = str(row.get("sample_number", "")).strip()
+    if sample_number:
+        for value in [sample_number, f"s{sample_number}"]:
+            if value and value not in aliases:
+                aliases.append(value)
+    if row_index is not None:
+        for value in [str(row_index), f"{row_index}"]:
+            if value and value not in aliases:
+                aliases.append(value)
+
+    return aliases
+
+
+def expand_sample_name_alias_rows(rows: list[dict]) -> list[dict]:
+    expanded: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for row_index, row in enumerate(rows):
+        canonical = str(row.get("sample", row.get("sample_name", ""))).strip()
+        for alias in sample_batch_aliases(row, row_index=row_index):
+            key = (str(alias), str(row.get("geo_accession", "")))
+            if key in seen:
+                continue
+            seen.add(key)
+            alias_row = dict(row)
+            alias_row["batch"] = alias
+            alias_row["batch_alias"] = alias
+            alias_row["batch_canonical"] = canonical
+            alias_row["sample_name"] = alias
+            alias_row["sample_name_alias"] = alias
+            alias_row["sample_name_canonical"] = canonical
+            expanded.append(alias_row)
+    return expanded
+
+
 def infer_expected_meta_columns(code_paths: list[Path]) -> list[str]:
     columns: set[str] = set()
     for path in code_paths:
@@ -252,6 +314,14 @@ def parse_args() -> argparse.Namespace:
             "This is useful only when the notebook needs sample IDs, not phenotype labels."
         ),
     )
+    parser.add_argument(
+        "--no-sample-name-alias-rows",
+        action="store_true",
+        help=(
+            "Do not expand meta_cr8.csv with additional rows for plausible sample_name "
+            "forms such as GSM accession, h5 filename, and sample stem."
+        ),
+    )
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
 
@@ -291,7 +361,12 @@ def main() -> int:
             "--download-soft. Use --allow-minimal-without-soft only for a sample-ID-only scaffold."
         )
 
-    output_rows = merge_metadata(h5_rows, soft_rows) if h5_rows else []
+    base_output_rows = merge_metadata(h5_rows, soft_rows) if h5_rows else []
+    output_rows = (
+        base_output_rows
+        if args.no_sample_name_alias_rows
+        else expand_sample_name_alias_rows(base_output_rows)
+    )
     output_columns = sorted({key for row in output_rows for key in row})
 
     code_paths = sorted(project_path(".").glob(args.code_glob))
@@ -359,6 +434,9 @@ def main() -> int:
         "input_dir": str(input_dir),
         "input_dir_exists": input_dir.exists(),
         "n_cellranger_h5": len(h5_rows),
+        "n_base_meta_rows": len(base_output_rows),
+        "sample_name_alias_rows_enabled": not args.no_sample_name_alias_rows,
+        "n_meta_rows_written": len(output_rows),
         "output": str(output_path),
         "output_exists": output_path.exists(),
         "soft_path": str(soft_path) if soft_path else None,
