@@ -1344,7 +1344,8 @@ for i in celldict_level1.keys():
                     "^SAMPLE = GSM9102249",
                     "!Sample_title = s61 lung sample",
                     "!Sample_characteristics_ch1 = condition: COPD",
-                    "!Sample_characteristics_ch1 = patient: P1",
+                    "!Sample_characteristics_ch1 = subject identity: P1",
+                    "!Sample_characteristics_ch1 = lobe emphysema: emphysema",
                     "!Sample_source_name_ch1 = lung",
                     "",
                 ]
@@ -1356,7 +1357,7 @@ for i in celldict_level1.keys():
             code_path.write_text(
                 "meta = pd.read_csv('input/meta_cr8.csv')\n"
                 "adata.obs['condition'] = meta['condition']\n"
-                "x = meta[['sample', 'patient']]\n",
+                "x = meta[['sample', 'patient', 'lobe_emphysema_simple']]\n",
                 encoding="utf-8",
             )
 
@@ -1370,7 +1371,11 @@ for i in celldict_level1.keys():
             self.assertEqual(soft_rows["GSM9102249"]["characteristics_condition"], "COPD")
             self.assertEqual(merged[0]["condition"], "COPD")
             self.assertEqual(merged[0]["patient"], "P1")
-            self.assertEqual(expected, ["condition", "patient", "sample"])
+            self.assertEqual(merged[0]["lobe_emphysema_simple"], "emphysema")
+            self.assertEqual(
+                expected,
+                ["condition", "lobe_emphysema_simple", "patient", "sample"],
+            )
 
 
 if __name__ == "__main__":

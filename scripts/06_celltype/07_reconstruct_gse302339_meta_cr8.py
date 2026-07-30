@@ -176,11 +176,20 @@ def add_alias_columns(row: dict) -> dict:
         or output.get("characteristics_patient")
         or output.get("characteristics_donor")
         or output.get("characteristics_individual")
+        or output.get("characteristics_subject_identity")
+        or output.get("characteristics_lab_id")
     )
     if patient:
         output.setdefault("patient", patient)
         output.setdefault("donor", patient)
         output.setdefault("donor_id", patient)
+    lobe_emphysema = (
+        output.get("lobe_emphysema_simple")
+        or output.get("characteristics_lobe_emphysema")
+        or output.get("characteristics_lobe_emphysema_severity_laa")
+    )
+    if lobe_emphysema:
+        output.setdefault("lobe_emphysema_simple", lobe_emphysema)
     return output
 
 
