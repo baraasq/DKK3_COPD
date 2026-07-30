@@ -834,6 +834,8 @@ class InputContractTests(unittest.TestCase):
                 {
                     "cell_type": "code",
                     "source": [
+                        "import scvi\n",
+                        "scvi.settings.seed = 0\n",
                         "!rm -r \"input/data_cellranger8/.DS_Store\"\n",
                         "celldict_level1 = {'Parenchyma': ['0', '1']}\n",
                         "adata.obs['celltype_level1'] = 'Parenchyma'\n",
@@ -863,9 +865,10 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(summary["n_selected_notebooks"], 1)
         self.assertEqual(summary["cells_with_celldict"], 1)
         self.assertEqual(summary["cells_with_open_output"], 1)
-        self.assertEqual(summary["n_notebook_only_lines_commented"], 1)
+        self.assertEqual(summary["n_notebook_only_lines_commented"], 3)
         self.assertTrue(rows[0]["has_celltype_assignment"])
         self.assertIn("# %% [cell 0]", exported)
+        self.assertIn("pass  # NOTEBOOK-OPTIONAL-SCVI", exported)
         self.assertIn("pass  # NOTEBOOK-ONLY: !rm", exported)
         self.assertIn("celldict_level1", exported)
 

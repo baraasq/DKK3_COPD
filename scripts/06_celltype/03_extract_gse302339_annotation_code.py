@@ -85,6 +85,11 @@ def sanitize_notebook_source(source: str) -> tuple[str, int]:
         if stripped.startswith(("!", "%", "?")) or stripped.endswith("?"):
             sanitized.append(f"{indent}pass  # NOTEBOOK-ONLY: {stripped[:180]}")
             n_changed += 1
+        elif stripped == "import scvi" or stripped.startswith("scvi.settings.seed"):
+            sanitized.append(
+                f"{indent}pass  # NOTEBOOK-OPTIONAL-SCVI skipped for current environment: {stripped[:140]}"
+            )
+            n_changed += 1
         else:
             sanitized.append(line)
     return "\n".join(sanitized), n_changed

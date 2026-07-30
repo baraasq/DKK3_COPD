@@ -253,7 +253,9 @@ pickle-style intermediate object names before deciding whether to reconstruct
 their annotated scRNA reference or switch to an external annotated lung atlas.
 Notebook-only shell/magic lines such as `!rm ...` or `%matplotlib` are replaced
 with no-op `pass` lines during export so the files can be syntax-checked with
-`python -m py_compile`.
+`python -m py_compile`. The unused optional `scvi` import/seed lines in the
+preprocessing notebook are also skipped during export because they can conflict
+with newer `anndata` versions and are not used elsewhere in the exported code.
 
 To turn the exported author `celldict_*` assignments into tidy cluster-to-cell
 type mapping tables:
