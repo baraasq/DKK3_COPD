@@ -195,6 +195,17 @@ def load_author_input_helper_module():
     return module
 
 
+def load_meta_cr8_reconstruction_module():
+    path = ROOT / "scripts" / "06_celltype" / "07_reconstruct_gse302339_meta_cr8.py"
+    spec = importlib.util.spec_from_file_location("meta_cr8_reconstruction", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load meta_cr8 reconstruction script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -1317,6 +1328,49 @@ for i in celldict_level1.keys():
                 helper_module.find_zip_member_for_path(zip_path, "input/meta_cr8.csv"),
                 "scanpy_workflow/input/meta_cr8.csv",
             )
+
+    def test_meta_cr8_reconstruction_parses_h5_soft_and_code_columns(self):
+        module = load_meta_cr8_reconstruction_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            h5_dir = tmp / "input" / "data_cellranger8"
+            h5_dir.mkdir(parents=True)
+            h5_path = h5_dir / "GSM9102249_s61_filtered_feature_bc_matrix.h5"
+            h5_path.write_bytes(b"placeholder")
+
+            soft_path = tmp / "GSE302339_family.soft.gz"
+            soft_text = "\n".join(
+                [
+                    "^SAMPLE = GSM9102249",
+                    "!Sample_title = s61 lung sample",
+                    "!Sample_characteristics_ch1 = condition: COPD",
+                    "!Sample_characteristics_ch1 = patient: P1",
+                    "!Sample_source_name_ch1 = lung",
+                    "",
+                ]
+            )
+            with gzip.open(soft_path, "wt", encoding="utf-8") as handle:
+                handle.write(soft_text)
+
+            code_path = tmp / "workflow.py"
+            code_path.write_text(
+                "meta = pd.read_csv('input/meta_cr8.csv')\n"
+                "adata.obs['condition'] = meta['condition']\n"
+                "x = meta[['sample', 'patient']]\n",
+                encoding="utf-8",
+            )
+
+            h5_rows = module.parse_h5_samples(h5_dir)
+            soft_rows = module.parse_soft_samples(soft_path)
+            merged = module.merge_metadata(h5_rows, soft_rows)
+            expected = module.infer_expected_meta_columns([code_path])
+
+            self.assertEqual(h5_rows[0]["sample"], "s61")
+            self.assertEqual(h5_rows[0]["geo_accession"], "GSM9102249")
+            self.assertEqual(soft_rows["GSM9102249"]["characteristics_condition"], "COPD")
+            self.assertEqual(merged[0]["condition"], "COPD")
+            self.assertEqual(merged[0]["patient"], "P1")
+            self.assertEqual(expected, ["condition", "patient", "sample"])
 
 
 if __name__ == "__main__":

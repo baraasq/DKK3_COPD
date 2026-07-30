@@ -294,6 +294,25 @@ preprocessing step. It writes:
 - `results/tables/gse302339_ribosomal_gene_helper_manifest.csv`
 - `results/tables/gse302339_author_notebook_sidecar_manifest.csv`
 
+If the sidecar audit reports that `input/meta_cr8.csv` is missing from the
+Zenodo notebook archive, reconstruct it from the Cell Ranger filenames and GEO
+sample metadata:
+
+```bash
+python scripts/06_celltype/07_reconstruct_gse302339_meta_cr8.py \
+  --download-soft \
+  --strict
+```
+
+This downloads/uses the GSE302339 family SOFT file, merges GEO sample metadata
+onto the 65 extracted Cell Ranger `.h5` files, and checks whether the exported
+author code references any `meta[...]` columns missing from the reconstructed
+table. It writes:
+
+- `input/meta_cr8.csv`
+- `results/meta/gse302339_meta_cr8_reconstruction_summary.json`
+- `results/tables/gse302339_meta_cr8_reconstruction_manifest.csv`
+
 After the authors' annotation workflow has been rerun, or if the pickle/H5AD
 artifact is otherwise available, build a GeoMx-compatible parenchymal signature
 matrix from the reconstructed author object:
