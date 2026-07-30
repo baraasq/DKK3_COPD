@@ -1267,6 +1267,57 @@ for i in celldict_level1.keys():
         self.assertFalse(pattern.match("DKK3"))
         self.assertFalse(pattern.match("RPRD1A"))
 
+    def test_author_input_helper_finds_zip_sidecar_by_basename(self):
+        helper_module = load_author_input_helper_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = Path(tmpdir) / "scanpy_workflow.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr(
+                    "scanpy_workflow/input/meta_cr8.csv",
+                    "sample,group\ns1,COPD\n",
+                )
+
+            self.assertEqual(
+                helper_module.find_zip_member(zip_path, "meta_cr8.csv"),
+                "scanpy_workflow/input/meta_cr8.csv",
+            )
+            self.assertIsNone(helper_module.find_zip_member(zip_path, "missing.csv"))
+
+    def test_author_input_helper_discovers_notebook_sidecar_reads(self):
+        helper_module = load_author_input_helper_module()
+        notebook = {
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "source": [
+                        "meta = pd.read_csv('input/meta_cr8.csv')\n",
+                        "ribo = pd.read_table(\"input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv\", header=None)\n",
+                        "with open('output/adata_harmony_integrated_cr8', 'wb') as handle:\n",
+                        "    pass\n",
+                    ],
+                }
+            ]
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = Path(tmpdir) / "scanpy_workflow.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("scanpy_workflow/1_preprocessing.ipynb", json.dumps(notebook))
+                archive.writestr("scanpy_workflow/input/meta_cr8.csv", "sample,group\ns1,COPD\n")
+
+            refs = helper_module.discover_notebook_file_references(zip_path)
+            read_sidecars = helper_module.unique_read_sidecars(refs)
+
+            self.assertIn("input/meta_cr8.csv", read_sidecars)
+            self.assertIn(
+                "input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv",
+                read_sidecars,
+            )
+            self.assertNotIn("output/adata_harmony_integrated_cr8", read_sidecars)
+            self.assertEqual(
+                helper_module.find_zip_member_for_path(zip_path, "input/meta_cr8.csv"),
+                "scanpy_workflow/input/meta_cr8.csv",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

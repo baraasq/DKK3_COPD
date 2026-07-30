@@ -276,7 +276,7 @@ For the pneumocyte/fibroblast question, inspect rows where
 `assigned_obs_column == parenchyma_celltype_level1`.
 
 Before rerunning the authors' preprocessing notebook export, prepare the small
-`input/` helper file it expects for ribosomal-content QC:
+`input/` helper files it expects:
 
 ```bash
 python scripts/06_celltype/06_prepare_gse302339_author_input_helpers.py --strict
@@ -284,10 +284,15 @@ python scripts/06_celltype/06_prepare_gse302339_author_input_helpers.py --strict
 
 This reconstructs `input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv` from the
 extracted Cell Ranger feature names using standard human ribosomal prefixes
-(`RPL`, `RPS`, `MRPL`, and `MRPS`). It writes:
+(`RPL`, `RPS`, `MRPL`, and `MRPS`). It also extracts
+`input/meta_cr8.csv` from the deposited Zenodo `scanpy_workflow.zip` if that
+sidecar is present. The script scans the notebooks for literal `input/...`
+file reads first, so unresolved sidecars are reported before rerunning a long
+preprocessing step. It writes:
 
 - `results/meta/gse302339_author_input_helper_summary.json`
 - `results/tables/gse302339_ribosomal_gene_helper_manifest.csv`
+- `results/tables/gse302339_author_notebook_sidecar_manifest.csv`
 
 After the authors' annotation workflow has been rerun, or if the pickle/H5AD
 artifact is otherwise available, build a GeoMx-compatible parenchymal signature
