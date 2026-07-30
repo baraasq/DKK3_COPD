@@ -290,7 +290,7 @@ By default this expects `output/parenchyma_harmony_annotated_cr8` and the
 Use that signature matrix with NNLS deconvolution:
 
 ```bash
-python scripts/06_celltype/01_deconvolve_gse292993_parenchyma_nnls.py \
+python scripts/06_celltype/01_deconvolve_gse292993_compartment_nnls.py \
   --signature-csv data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv \
   --strict
 ```
@@ -300,7 +300,7 @@ run the NNLS step once per compartment:
 
 ```bash
 for compartment in airway parenchyma vessel; do
-  python scripts/06_celltype/01_deconvolve_gse292993_parenchyma_nnls.py \
+  python scripts/06_celltype/01_deconvolve_gse292993_compartment_nnls.py \
     --compartment "$compartment" \
     --signature-csv data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv \
     --strict
@@ -351,10 +351,12 @@ and retained only in QC plots/tables. ROI summaries are descriptive;
 donor-compartment summaries are the unit to carry forward into inference.
 
 After the WTA matrix, scRNA signatures, and DKK3 ROI summaries exist, run the
-first parenchyma-only baseline deconvolution:
+baseline NNLS deconvolution for the selected GeoMx compartment. The default is
+`parenchyma` because the first biological question is pneumocyte/fibroblast
+composition:
 
 ```bash
-python scripts/06_celltype/01_deconvolve_gse292993_parenchyma_nnls.py --strict
+python scripts/06_celltype/01_deconvolve_gse292993_compartment_nnls.py --strict
 ```
 
 This writes:

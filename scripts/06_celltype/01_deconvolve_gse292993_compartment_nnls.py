@@ -253,7 +253,7 @@ def correlation_rows(rows: list[dict], fraction_columns: list[str], *, unit: str
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run baseline NNLS deconvolution for QC-passing GSE292993 parenchymal ROIs."
+        description="Run baseline NNLS deconvolution for QC-passing GSE292993 ROIs in a selected GeoMx compartment."
     )
     parser.add_argument("--compartment", default="parenchyma")
     parser.add_argument("--signature-csv")

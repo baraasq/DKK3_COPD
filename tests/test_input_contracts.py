@@ -129,10 +129,10 @@ def load_scrna_audit_module():
 
 
 def load_deconv_module():
-    path = ROOT / "scripts" / "06_celltype" / "01_deconvolve_gse292993_parenchyma_nnls.py"
-    spec = importlib.util.spec_from_file_location("parenchyma_deconv", path)
+    path = ROOT / "scripts" / "06_celltype" / "01_deconvolve_gse292993_compartment_nnls.py"
+    spec = importlib.util.spec_from_file_location("compartment_deconv", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Could not load parenchyma deconvolution script.")
+        raise RuntimeError("Could not load compartment deconvolution script.")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
