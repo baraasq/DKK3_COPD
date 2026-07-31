@@ -401,6 +401,19 @@ It writes:
 - `results/tables/gse302339_saved_object_cluster_map_compatibility.csv`
 - `results/tables/gse302339_saved_object_required_celltype_compatibility.csv`
 
+Before building signatures, also audit whether the saved objects contain a
+usable expression source. The reconstructed author objects may have scaled or
+regressed values in `.X`, which are not safe for logCPM signature construction:
+
+```bash
+python scripts/06_celltype/12_audit_gse302339_author_expression_slots.py
+```
+
+This writes:
+
+- `results/meta/gse302339_author_expression_slot_audit_summary.json`
+- `results/tables/gse302339_author_expression_slot_audit.csv`
+
 If the saved object passes that audit, build a GeoMx-compatible parenchymal
 signature matrix from the reconstructed author object:
 
@@ -417,6 +430,28 @@ By default this expects `output/parenchyma_harmony_annotated_cr8` and the
 - `results/tables/gse302339_author_signature_manifest.csv`
 - `data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv`
 - `data/external/scrna_reference/gse302339_author_parenchyma_celltype_level1.h5ad`
+
+If the fibroblast/stromal labels are present only as full-object Leiden cluster
+maps, build from the full object by explicitly applying the author map and
+restricting to the pneumocyte/fibroblast cell types:
+
+```bash
+python scripts/06_celltype/05_build_gse302339_author_signatures.py \
+  --input-object output/adata_harmony_annotated_cr8 \
+  --cell-type-column parenchyma_celltype_level1 \
+  --rebuild-labels-from-cluster-map \
+  --include-cell-type AT1 \
+  --include-cell-type AT2 \
+  --include-cell-type Fibroblast \
+  --signature-output data/processed/gse292993/gse302339_author_full_leiden_at1_at2_fibroblast_signatures_logcpm.csv \
+  --h5ad-output data/external/scrna_reference/gse302339_author_full_leiden_at1_at2_fibroblast.h5ad \
+  --no-write-h5ad \
+  --strict
+```
+
+The signature builder uses `--expression-source auto` by default: it prefers the
+requested layer, then `raw.X`, then `.X`. Use the expression-slot audit above to
+confirm which source was selected.
 
 Use that signature matrix with NNLS deconvolution:
 

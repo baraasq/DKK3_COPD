@@ -261,6 +261,17 @@ def load_saved_author_object_audit_module():
     return module
 
 
+def load_author_expression_slot_audit_module():
+    path = ROOT / "scripts" / "06_celltype" / "12_audit_gse302339_author_expression_slots.py"
+    spec = importlib.util.spec_from_file_location("author_expression_slot_audit", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load author expression-slot audit script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -1722,6 +1733,73 @@ for i in celldict_level1.keys():
         self.assertEqual(fibroblast["direct_cell_count"], 0)
         self.assertEqual(fibroblast["n_overlap_clusters"], 0)
         self.assertEqual(fibroblast["n_cells_if_cluster_map_forced"], 0)
+
+    def test_author_expression_slot_audit_detects_negative_x_and_raw(self):
+        module = load_author_expression_slot_audit_module()
+        import numpy as np
+        import pandas as pd
+
+        class FakeRaw:
+            X = np.array([[0, 1], [2, 3]])
+            var = pd.DataFrame(index=["DKK3", "COL1A1"])
+            shape = X.shape
+
+        class FakeAdata:
+            X = np.array([[0.0, -1.0], [1.0, 2.0]])
+            obs = pd.DataFrame(index=["c1", "c2"])
+            var = pd.DataFrame(index=["DKK3", "COL1A1"])
+            layers = {}
+            raw = FakeRaw()
+            n_obs = 2
+            n_vars = 2
+
+        summary = module.object_summary(
+            object_name="fake",
+            path=Path("fake"),
+            load_summary={"path": "fake", "exists": True, "status": "ok"},
+            adata=FakeAdata(),
+            primary_gene="DKK3",
+            max_dense_rows=10,
+            max_dense_cols=10,
+        )
+
+        self.assertEqual(summary["X"]["n_negative_checked"], 1)
+        self.assertTrue(summary["raw"]["exists"])
+        self.assertTrue(summary["raw"]["primary_gene_present"])
+        self.assertEqual(summary["usable_nonnegative_sources"], ["raw.X"])
+
+    def test_author_signature_builder_auto_prefers_raw_when_layer_missing(self):
+        module = load_author_signature_module()
+        import numpy as np
+        import pandas as pd
+
+        class FakeRaw:
+            X = np.array([[0, 1], [2, 3]])
+            var = pd.DataFrame(index=["DKK3", "COL1A1"])
+            var_names = var.index
+            shape = X.shape
+
+        class FakeAdata:
+            X = np.array([[0.0, -1.0], [1.0, 2.0]])
+            obs = pd.DataFrame({"celltype": ["AT1", "Fibroblast"]})
+            var = pd.DataFrame(index=["DKK3", "COL1A1"])
+            var_names = var.index
+            layers = {}
+            raw = FakeRaw()
+            n_obs = 2
+            n_vars = 2
+
+        reference, layer, summary = module.select_expression_reference(
+            FakeAdata(),
+            expression_source="auto",
+            requested_layer="counts",
+        )
+
+        self.assertIsNone(layer)
+        self.assertEqual(summary["selected_expression_source"], "raw.X")
+        self.assertEqual(summary["warning"], "Requested layer 'counts' not found; using raw.X")
+        self.assertEqual(reference.n_vars, 2)
+        self.assertEqual(reference.obs["celltype"].tolist(), ["AT1", "Fibroblast"])
 
 
 if __name__ == "__main__":

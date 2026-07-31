@@ -26,6 +26,22 @@ DEFAULT_CLUSTER_MAP = project_path(
 )
 
 
+class RawExpressionView:
+    """Lightweight AnnData-like view using adata.raw.X and adata.obs labels."""
+
+    def __init__(self, adata: Any):
+        raw = getattr(adata, "raw", None)
+        if raw is None:
+            raise ValueError("AnnData object has no .raw slot")
+        self.X = raw.X
+        self.obs = adata.obs
+        self.var = raw.var
+        self.var_names = raw.var_names
+        self.layers = {}
+        self.n_obs = adata.n_obs
+        self.n_vars = raw.shape[1]
+
+
 def load_scrna_audit_module():
     path = Path(__file__).resolve().parent / "00_audit_scrna_reference.py"
     spec = importlib.util.spec_from_file_location("scrna_reference_audit", path)
@@ -116,6 +132,58 @@ def selected_layer(adata: Any, requested_layer: str | None) -> str | None:
     if not requested_layer:
         return None
     return requested_layer if requested_layer in available_layers(adata) else None
+
+
+def raw_available(adata: Any) -> bool:
+    return getattr(adata, "raw", None) is not None
+
+
+def select_expression_reference(
+    adata: Any,
+    *,
+    expression_source: str,
+    requested_layer: str | None,
+) -> tuple[Any, str | None, dict]:
+    chosen_layer = selected_layer(adata, requested_layer)
+    raw_exists = raw_available(adata)
+    summary = {
+        "requested_expression_source": expression_source,
+        "requested_layer": requested_layer,
+        "selected_expression_source": "X",
+        "selected_layer": "",
+        "raw_available": raw_exists,
+        "warning": "",
+        "failure": "",
+    }
+
+    if expression_source == "raw":
+        if not raw_exists:
+            summary["failure"] = "Requested raw expression source, but object has no .raw slot"
+            return adata, None, summary
+        summary["selected_expression_source"] = "raw.X"
+        return RawExpressionView(adata), None, summary
+
+    if expression_source == "X":
+        if requested_layer and chosen_layer is None:
+            summary["warning"] = f"Requested layer '{requested_layer}' not found; using X"
+        return adata, None, summary
+
+    if expression_source != "auto":
+        summary["failure"] = f"Unknown expression source: {expression_source}"
+        return adata, None, summary
+
+    if chosen_layer:
+        summary["selected_expression_source"] = f"layer:{chosen_layer}"
+        summary["selected_layer"] = chosen_layer
+        return adata, chosen_layer, summary
+    if raw_exists:
+        summary["selected_expression_source"] = "raw.X"
+        if requested_layer:
+            summary["warning"] = f"Requested layer '{requested_layer}' not found; using raw.X"
+        return RawExpressionView(adata), None, summary
+    if requested_layer:
+        summary["warning"] = f"Requested layer '{requested_layer}' not found; using X"
+    return adata, None, summary
 
 
 def filter_to_valid_labels(
@@ -278,6 +346,15 @@ def main() -> int:
     )
     parser.add_argument("--input-object", default=str(DEFAULT_INPUT_OBJECT))
     parser.add_argument("--cell-type-column", default=DEFAULT_CELL_TYPE_COLUMN)
+    parser.add_argument(
+        "--expression-source",
+        choices=["auto", "X", "raw"],
+        default="auto",
+        help=(
+            "Expression matrix to use for signatures. 'auto' prefers the requested "
+            "layer, then raw.X, then X."
+        ),
+    )
     parser.add_argument("--layer", default="counts")
     parser.add_argument("--min-cells-per-cell-type", type=int, default=25)
     parser.add_argument("--min-overlap-genes", type=int, default=500)
@@ -378,12 +455,6 @@ def main() -> int:
     if args.cell_type_column not in adata.obs.columns:
         failures.append(f"Cell type column not found: {args.cell_type_column}")
 
-    chosen_layer = selected_layer(adata, args.layer)
-    if args.layer and chosen_layer is None:
-        layer_warning = f"Requested layer '{args.layer}' not found; using X"
-    else:
-        layer_warning = ""
-
     filtered = adata
     filter_summary = {}
     if not failures:
@@ -392,6 +463,26 @@ def main() -> int:
             cell_type_column=args.cell_type_column,
             include_cell_types=args.include_cell_types,
         )
+
+    expression_reference = filtered
+    chosen_layer = None
+    expression_summary = {
+        "requested_expression_source": args.expression_source,
+        "requested_layer": args.layer,
+        "selected_expression_source": "not_selected",
+        "selected_layer": "",
+        "raw_available": False,
+        "warning": "",
+        "failure": "",
+    }
+    if not failures:
+        expression_reference, chosen_layer, expression_summary = select_expression_reference(
+            filtered,
+            expression_source=args.expression_source,
+            requested_layer=args.layer,
+        )
+        if expression_summary.get("failure"):
+            failures.append(expression_summary["failure"])
 
     h5ad_summary = {
         "path": str(h5ad_output),
@@ -405,7 +496,7 @@ def main() -> int:
     if not failures:
         ref_helpers = load_scrna_audit_module()
         signature_summary = build_author_signatures(
-            adata=filtered,
+            adata=expression_reference,
             ref_helpers=ref_helpers,
             geomx_feature_manifest=results["tables"] / "gse292993_geomx_feature_manifest.csv",
             cell_type_column=args.cell_type_column,
@@ -440,9 +531,7 @@ def main() -> int:
         "obs_columns": obs_columns(filtered),
         "cell_type_column": args.cell_type_column,
         "available_layers": available_layers(filtered),
-        "requested_layer": args.layer,
-        "selected_expression_source": f"layer:{chosen_layer}" if chosen_layer else "X",
-        "layer_warning": layer_warning,
+        "expression_summary": expression_summary,
         "filter_summary": filter_summary,
         "label_rebuild_summary": label_rebuild_summary,
         "required_cell_types": required_cell_types,
