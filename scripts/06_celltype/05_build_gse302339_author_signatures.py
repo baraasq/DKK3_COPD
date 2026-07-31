@@ -300,6 +300,89 @@ def apply_cluster_label_map(
     }
 
 
+def dense_or_sparse_mean(matrix, cell_indices: list[int], gene_indices: list[int]):
+    import numpy as np
+
+    subset = matrix[cell_indices, :][:, gene_indices]
+    if hasattr(subset, "tocsr"):
+        subset = subset.tocsr()
+        if subset.shape[0] == 0:
+            return None, 0
+        return np.asarray(subset.mean(axis=0)).ravel(), int(subset.shape[0])
+
+    subset = np.asarray(subset)
+    if subset.shape[0] == 0:
+        return None, 0
+    return np.asarray(subset.mean(axis=0)).ravel(), int(subset.shape[0])
+
+
+def write_mean_signature_matrix(
+    *,
+    adata: Any,
+    cell_type_column: str,
+    overlap: dict,
+    output_path: Path,
+    min_cells: int,
+) -> tuple[list[dict], list[dict]]:
+    import csv
+    import numpy as np
+
+    matrix = adata.X
+    labels = [str(value) for value in adata.obs[cell_type_column].tolist()]
+    label_counts = Counter(labels)
+    selected_labels = sorted(
+        label for label, count in label_counts.items() if count >= min_cells
+    )
+    genes = overlap["common_genes"]
+    gene_indices = overlap["adata_gene_indices"]
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    signature_rows = []
+    cell_count_rows = []
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["cell_type", *genes])
+        for label in selected_labels:
+            cell_indices = [
+                index for index, value in enumerate(labels) if value == label
+            ]
+            means, n_cells_used = dense_or_sparse_mean(
+                matrix, cell_indices, gene_indices
+            )
+            if means is None:
+                continue
+            writer.writerow([label, *[float(value) for value in np.asarray(means).ravel()]])
+            signature_rows.append(
+                {
+                    "cell_type": label,
+                    "n_cells": len(cell_indices),
+                    "n_cells_used": n_cells_used,
+                    "n_genes": len(genes),
+                }
+            )
+        for label, count in sorted(label_counts.items()):
+            cell_count_rows.append(
+                {
+                    "cell_type": label,
+                    "n_cells": count,
+                    "included_in_signature": str(label in selected_labels),
+                }
+            )
+    return signature_rows, cell_count_rows
+
+
+def resolve_signature_transform(
+    *,
+    requested_transform: str,
+    selected_expression_source: str,
+) -> str:
+    if requested_transform != "auto":
+        return requested_transform
+    if selected_expression_source.startswith("layer:") and "count" in selected_expression_source.casefold():
+        return "logcpm"
+    return "mean"
+
+
 def build_author_signatures(
     *,
     adata: Any,
@@ -309,20 +392,33 @@ def build_author_signatures(
     layer: str | None,
     signature_output: Path,
     min_cells: int,
+    signature_transform: str,
 ) -> dict:
     geomx_genes = ref_helpers.read_geomx_genes(geomx_feature_manifest)
     overlap = ref_helpers.select_gene_overlap(adata, geomx_genes)
-    signature_rows, cell_count_rows = ref_helpers.write_signature_matrix(
-        adata=adata,
-        cell_type_column=cell_type_column,
-        layer=layer,
-        overlap=overlap,
-        output_path=signature_output,
-        min_cells=min_cells,
-    )
+    if signature_transform == "logcpm":
+        signature_rows, cell_count_rows = ref_helpers.write_signature_matrix(
+            adata=adata,
+            cell_type_column=cell_type_column,
+            layer=layer,
+            overlap=overlap,
+            output_path=signature_output,
+            min_cells=min_cells,
+        )
+    elif signature_transform == "mean":
+        signature_rows, cell_count_rows = write_mean_signature_matrix(
+            adata=adata,
+            cell_type_column=cell_type_column,
+            overlap=overlap,
+            output_path=signature_output,
+            min_cells=min_cells,
+        )
+    else:
+        raise ValueError(f"Unsupported signature transform: {signature_transform}")
     return {
         "geomx_feature_manifest": str(geomx_feature_manifest),
         "n_geomx_genes": len(geomx_genes),
+        "signature_transform": signature_transform,
         "gene_overlap": {
             "source": overlap["source"],
             "n_overlap": overlap["n_overlap"],
@@ -356,6 +452,16 @@ def main() -> int:
         ),
     )
     parser.add_argument("--layer", default="counts")
+    parser.add_argument(
+        "--signature-transform",
+        choices=["auto", "logcpm", "mean"],
+        default="auto",
+        help=(
+            "How to summarize the selected expression matrix. 'logcpm' treats "
+            "the matrix as counts; 'mean' averages values as stored; 'auto' uses "
+            "logcpm only for count-like layers and mean otherwise."
+        ),
+    )
     parser.add_argument("--min-cells-per-cell-type", type=int, default=25)
     parser.add_argument("--min-overlap-genes", type=int, default=500)
     parser.add_argument(
@@ -484,6 +590,13 @@ def main() -> int:
         if expression_summary.get("failure"):
             failures.append(expression_summary["failure"])
 
+    signature_transform = resolve_signature_transform(
+        requested_transform=args.signature_transform,
+        selected_expression_source=expression_summary.get(
+            "selected_expression_source", "X"
+        ),
+    )
+
     h5ad_summary = {
         "path": str(h5ad_output),
         "written": False,
@@ -503,6 +616,7 @@ def main() -> int:
             layer=chosen_layer,
             signature_output=signature_output,
             min_cells=args.min_cells_per_cell_type,
+            signature_transform=signature_transform,
         )
 
     signature_cell_types = set(signature_summary.get("signature_cell_types", []))
@@ -532,6 +646,8 @@ def main() -> int:
         "cell_type_column": args.cell_type_column,
         "available_layers": available_layers(filtered),
         "expression_summary": expression_summary,
+        "requested_signature_transform": args.signature_transform,
+        "selected_signature_transform": signature_transform,
         "filter_summary": filter_summary,
         "label_rebuild_summary": label_rebuild_summary,
         "required_cell_types": required_cell_types,

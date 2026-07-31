@@ -443,7 +443,9 @@ python scripts/06_celltype/05_build_gse302339_author_signatures.py \
   --include-cell-type AT1 \
   --include-cell-type AT2 \
   --include-cell-type Fibroblast \
-  --signature-output data/processed/gse292993/gse302339_author_full_leiden_at1_at2_fibroblast_signatures_logcpm.csv \
+  --expression-source raw \
+  --signature-transform mean \
+  --signature-output data/processed/gse292993/gse302339_author_full_leiden_at1_at2_fibroblast_signatures_rawX_mean.csv \
   --h5ad-output data/external/scrna_reference/gse302339_author_full_leiden_at1_at2_fibroblast.h5ad \
   --no-write-h5ad \
   --strict
@@ -451,7 +453,9 @@ python scripts/06_celltype/05_build_gse302339_author_signatures.py \
 
 The signature builder uses `--expression-source auto` by default: it prefers the
 requested layer, then `raw.X`, then `.X`. Use the expression-slot audit above to
-confirm which source was selected.
+confirm which source was selected. When using the author `raw.X` slot from these
+objects, use `--signature-transform mean` because `raw.X` appears to contain
+nonnegative log-normalized values rather than raw integer counts.
 
 Use that signature matrix with NNLS deconvolution:
 

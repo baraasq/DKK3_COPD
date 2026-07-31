@@ -1800,6 +1800,20 @@ for i in celldict_level1.keys():
         self.assertEqual(summary["warning"], "Requested layer 'counts' not found; using raw.X")
         self.assertEqual(reference.n_vars, 2)
         self.assertEqual(reference.obs["celltype"].tolist(), ["AT1", "Fibroblast"])
+        self.assertEqual(
+            module.resolve_signature_transform(
+                requested_transform="auto",
+                selected_expression_source=summary["selected_expression_source"],
+            ),
+            "mean",
+        )
+        self.assertEqual(
+            module.resolve_signature_transform(
+                requested_transform="auto",
+                selected_expression_source="layer:counts",
+            ),
+            "logcpm",
+        )
 
 
 if __name__ == "__main__":
