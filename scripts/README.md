@@ -296,6 +296,22 @@ With no `--code-file` arguments, it scans all exported notebook `.py` files in
 question, use a map only when the saved-object audit confirms that the map and
 object use the same clustering.
 
+To trace the exact object-local clustering steps, including subset assignments,
+Scanpy/Harmony/Leiden calls, `.obs` assignments, cell-type dictionaries, and
+pickle read/write artifacts:
+
+```bash
+python scripts/06_celltype/13_trace_gse302339_scanpy_clustering_workflow.py --strict
+```
+
+This writes:
+
+- `results/meta/gse302339_scanpy_clustering_workflow_summary.json`
+- `results/tables/gse302339_scanpy_clustering_workflow_steps.csv`
+
+Use this table to confirm which object variable each Leiden clustering belongs
+to before applying an extracted cluster-to-cell-type dictionary.
+
 Before rerunning the authors' preprocessing notebook export, prepare the small
 `input/` helper files it expects:
 
@@ -431,22 +447,33 @@ By default this expects `output/parenchyma_harmony_annotated_cr8` and the
 - `data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv`
 - `data/external/scrna_reference/gse302339_author_parenchyma_celltype_level1.h5ad`
 
-If the fibroblast/stromal labels are present only as full-object Leiden cluster
-maps, build from the full object by explicitly applying the author map and
-restricting to the pneumocyte/fibroblast cell types:
+Do not apply a cluster map across different saved objects. For example, the
+`parenchyma_celltype_level1` map extracted from `2_celltype_annotation.py` is
+assigned to the notebook variable `parenchyma` after its own parenchymal
+subclustering. It should not be applied to `output/adata_harmony_annotated_cr8`,
+even if some cluster IDs overlap numerically. Cluster IDs are not stable cell
+type identifiers across object states, graph construction, package versions, or
+Leiden runs. The signature builder refuses this cross-object relabeling by
+default.
+
+Only build a pneumocyte/fibroblast signature from an object that naturally
+contains the required labels in its own `.obs` column, or from the exact object
+whose clustering generated the author map. If the current reconstructed
+`parenchyma_harmony_annotated_cr8` object lacks `Fibroblast`, this command
+should fail under `--strict`; recover the authors' final matching object or
+perform marker-based reannotation before deconvolution:
 
 ```bash
 python scripts/06_celltype/05_build_gse302339_author_signatures.py \
-  --input-object output/adata_harmony_annotated_cr8 \
+  --input-object output/parenchyma_harmony_annotated_cr8 \
   --cell-type-column parenchyma_celltype_level1 \
-  --rebuild-labels-from-cluster-map \
   --include-cell-type AT1 \
   --include-cell-type AT2 \
   --include-cell-type Fibroblast \
   --expression-source raw \
   --signature-transform mean \
-  --signature-output data/processed/gse292993/gse302339_author_full_leiden_at1_at2_fibroblast_signatures_rawX_mean.csv \
-  --h5ad-output data/external/scrna_reference/gse302339_author_full_leiden_at1_at2_fibroblast.h5ad \
+  --signature-output data/processed/gse292993/gse302339_author_parenchyma_at1_at2_fibroblast_signatures_rawX_mean.csv \
+  --h5ad-output data/external/scrna_reference/gse302339_author_parenchyma_at1_at2_fibroblast.h5ad \
   --no-write-h5ad \
   --strict
 ```

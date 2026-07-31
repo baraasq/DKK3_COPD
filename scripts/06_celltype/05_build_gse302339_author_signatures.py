@@ -270,6 +270,46 @@ def cluster_label_map(
     return mapping
 
 
+def cluster_map_assigned_objects(
+    cluster_map_path: Path,
+    *,
+    assigned_obs_column: str,
+) -> list[str]:
+    rows = read_csv(cluster_map_path)
+    return sorted(
+        {
+            str(row.get("assigned_object", "")).strip()
+            for row in rows
+            if row.get("assigned_obs_column") == assigned_obs_column
+            and str(row.get("assigned_object", "")).strip()
+        }
+    )
+
+
+def infer_input_object_aliases(path: Path) -> list[str]:
+    name = path.name.casefold()
+    aliases = set()
+    if "parenchyma" in name:
+        aliases.add("parenchyma")
+    if "immune" in name:
+        aliases.add("immune")
+    if "adata" in name or "full" in name:
+        aliases.add("adata")
+    return sorted(aliases)
+
+
+def compatible_cluster_map_object(
+    *,
+    assigned_objects: list[str],
+    input_object_aliases: list[str],
+) -> bool:
+    if not assigned_objects:
+        return True
+    if not input_object_aliases:
+        return False
+    return bool(set(assigned_objects) & set(input_object_aliases))
+
+
 def apply_cluster_label_map(
     adata: Any,
     *,
@@ -492,6 +532,14 @@ def main() -> int:
             "IDs in the object match the extracted map."
         ),
     )
+    parser.add_argument(
+        "--allow-cross-object-cluster-map",
+        action="store_true",
+        help=(
+            "Allow applying a cluster map whose extracted assigned_object does not "
+            "match the input object name. This is unsafe unless manually verified."
+        ),
+    )
     parser.add_argument("--no-write-h5ad", action="store_true")
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
@@ -543,20 +591,47 @@ def main() -> int:
         if not cluster_map_path.exists():
             label_rebuild_summary["reason"] = "cluster_map_missing"
         else:
-            mapping = cluster_label_map(
+            assigned_objects = cluster_map_assigned_objects(
                 cluster_map_path,
                 assigned_obs_column=args.cell_type_column,
             )
-            label_rebuild_summary = {
-                "requested": True,
-                "cluster_map": str(cluster_map_path),
-                **apply_cluster_label_map(
-                    adata,
-                    cluster_column=args.cluster_column,
-                    output_column=args.cell_type_column,
-                    mapping=mapping,
-                ),
-            }
+            input_object_aliases = infer_input_object_aliases(input_object)
+            label_rebuild_summary.update(
+                {
+                    "assigned_objects_in_cluster_map": assigned_objects,
+                    "input_object_aliases": input_object_aliases,
+                    "allow_cross_object_cluster_map": args.allow_cross_object_cluster_map,
+                }
+            )
+            if not args.allow_cross_object_cluster_map and not compatible_cluster_map_object(
+                assigned_objects=assigned_objects,
+                input_object_aliases=input_object_aliases,
+            ):
+                label_rebuild_summary["reason"] = "cluster_map_assigned_object_mismatch"
+                failures.append(
+                    "Refusing to apply cluster map assigned to "
+                    f"{assigned_objects or ['<unknown>']} onto input object "
+                    f"{input_object.name!r} with inferred aliases "
+                    f"{input_object_aliases or ['<unknown>']}. "
+                    "Use the correct saved object or pass --allow-cross-object-cluster-map "
+                    "only after manual marker validation."
+                )
+            else:
+                mapping = cluster_label_map(
+                    cluster_map_path,
+                    assigned_obs_column=args.cell_type_column,
+                )
+                label_rebuild_summary = {
+                    **label_rebuild_summary,
+                    "requested": True,
+                    "cluster_map": str(cluster_map_path),
+                    **apply_cluster_label_map(
+                        adata,
+                        cluster_column=args.cluster_column,
+                        output_column=args.cell_type_column,
+                        mapping=mapping,
+                    ),
+                }
 
     if args.cell_type_column not in adata.obs.columns:
         failures.append(f"Cell type column not found: {args.cell_type_column}")

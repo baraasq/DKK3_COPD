@@ -272,6 +272,17 @@ def load_author_expression_slot_audit_module():
     return module
 
 
+def load_scanpy_clustering_trace_module():
+    path = ROOT / "scripts" / "06_celltype" / "13_trace_gse302339_scanpy_clustering_workflow.py"
+    spec = importlib.util.spec_from_file_location("scanpy_clustering_trace", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load Scanpy clustering trace script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -1814,6 +1825,61 @@ for i in celldict_level1.keys():
             ),
             "logcpm",
         )
+
+    def test_author_signature_builder_rejects_cross_object_cluster_map_by_default(self):
+        module = load_author_signature_module()
+
+        self.assertEqual(
+            module.infer_input_object_aliases(Path("output/adata_harmony_annotated_cr8")),
+            ["adata"],
+        )
+        self.assertEqual(
+            module.infer_input_object_aliases(Path("output/parenchyma_harmony_annotated_cr8")),
+            ["parenchyma"],
+        )
+        self.assertFalse(
+            module.compatible_cluster_map_object(
+                assigned_objects=["parenchyma"],
+                input_object_aliases=["adata"],
+            )
+        )
+        self.assertTrue(
+            module.compatible_cluster_map_object(
+                assigned_objects=["parenchyma"],
+                input_object_aliases=["parenchyma"],
+            )
+        )
+
+    def test_scanpy_clustering_trace_detects_object_local_leiden(self):
+        module = load_scanpy_clustering_trace_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            code = Path(tmpdir) / "2_celltype_annotation.py"
+            code.write_text(
+                "# Notebook: scanpy_workflow/2_celltype_annotation.ipynb\n"
+                "# %% [cell 10]\n"
+                "with open('output/adata_harmony_integrated_cr8', \"rb\") as file:\n"
+                "    adata = pickle.load(file)\n"
+                "parenchyma = adata[adata.obs['celltype_level1'].isin(['Parenchyma']), :].copy()\n"
+                "sc.pp.neighbors(parenchyma)\n"
+                "sc.tl.umap(parenchyma)\n"
+                "sc.tl.leiden(parenchyma,resolution=2,flavor='igraph',n_iterations=2)\n"
+                "celldict_level1={'Fibroblast':['29']}\n"
+                "parenchyma.obs['parenchyma_celltype_level1']=np.NaN\n"
+                "with open('output/parenchyma_harmony_annotated_cr8', \"wb\") as file:\n",
+                encoding="utf-8",
+            )
+
+            rows, _ = module.trace_code_file(code, start_order=1)
+            summary = module.summarize(rows, [code])
+            kinds = {row["kind"] for row in rows}
+            leiden = next(row for row in rows if row["function"] == "sc.tl.leiden")
+
+            self.assertIn("object_subset_assignment", kinds)
+            self.assertIn("celltype_dictionary_start", kinds)
+            self.assertEqual(leiden["object"], "parenchyma")
+            self.assertEqual(leiden["resolution"], "2")
+            self.assertEqual(leiden["flavor"], "igraph")
+            self.assertIn("parenchyma", summary["objects_with_clustering"])
 
 
 if __name__ == "__main__":
