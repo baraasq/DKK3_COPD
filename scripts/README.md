@@ -430,6 +430,23 @@ This writes:
 - `results/meta/gse302339_author_expression_slot_audit_summary.json`
 - `results/tables/gse302339_author_expression_slot_audit.csv`
 
+To compare the author notebook's recorded clustering outputs against your
+locally reconstructed saved objects, run:
+
+```bash
+python scripts/06_celltype/14_compare_gse302339_notebook_expected_clusters.py --strict
+```
+
+This is a hard guardrail for the GSE302339 reference. The deposited notebook
+recorded 41 parenchyma Leiden clusters before applying the
+`parenchyma_celltype_level1` dictionary. If your reconstructed
+`output/parenchyma_harmony_annotated_cr8` has fewer clusters, the author
+cluster IDs are not compatible with that object and should not be used to build
+AT1/AT2/Fibroblast signatures. It writes:
+
+- `results/meta/gse302339_notebook_expected_cluster_comparison_summary.json`
+- `results/tables/gse302339_notebook_expected_cluster_comparison.csv`
+
 If the saved object passes that audit, build a GeoMx-compatible parenchymal
 signature matrix from the reconstructed author object:
 

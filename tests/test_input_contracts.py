@@ -283,6 +283,17 @@ def load_scanpy_clustering_trace_module():
     return module
 
 
+def load_notebook_expected_cluster_comparison_module():
+    path = ROOT / "scripts" / "06_celltype" / "14_compare_gse302339_notebook_expected_clusters.py"
+    spec = importlib.util.spec_from_file_location("notebook_expected_cluster_comparison", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load notebook expected cluster comparison script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -1880,6 +1891,70 @@ for i in celldict_level1.keys():
             self.assertEqual(leiden["resolution"], "2")
             self.assertEqual(leiden["flavor"], "igraph")
             self.assertIn("parenchyma", summary["objects_with_clustering"])
+
+    def test_notebook_expected_cluster_comparison_parses_outputs(self):
+        module = load_notebook_expected_cluster_comparison_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = Path(tmpdir) / "scanpy_workflow.zip"
+            notebook = {
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "source": [
+                            "sc.pp.highly_variable_genes(adata)\n",
+                            "print(adata.shape)\n",
+                        ],
+                        "outputs": [{"text": ["(160620, 2323)\n"]}],
+                    },
+                    {
+                        "cell_type": "code",
+                        "source": [
+                            "sc.pp.neighbors(parenchyma)\n",
+                            "sc.tl.leiden(parenchyma,resolution=2,flavor='igraph',n_iterations=2)\n",
+                        ],
+                        "outputs": [
+                            {
+                                "text": [
+                                    "running Leiden clustering\n",
+                                    "    finished: found 41 clusters and added\n",
+                                ]
+                            }
+                        ],
+                    },
+                ]
+            }
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr(
+                    "scanpy_workflow/2_celltype_annotation.ipynb",
+                    json.dumps(notebook),
+                )
+
+            events, summary = module.parse_notebook_expectations(
+                zip_path, ["scanpy_workflow/2_celltype_annotation.ipynb"]
+            )
+
+        self.assertEqual(summary["members_read"], ["scanpy_workflow/2_celltype_annotation.ipynb"])
+        self.assertIn(
+            {
+                "kind": "post_hvg_shape",
+                "object": "adata",
+                "notebook": "scanpy_workflow/2_celltype_annotation.ipynb",
+                "cell_index": 0,
+                "n_obs": 160620,
+                "n_vars": 2323,
+            },
+            events,
+        )
+        self.assertIn(
+            {
+                "kind": "leiden_cluster_count",
+                "object": "parenchyma",
+                "notebook": "scanpy_workflow/2_celltype_annotation.ipynb",
+                "cell_index": 1,
+                "n_clusters": 41,
+            },
+            events,
+        )
 
 
 if __name__ == "__main__":
