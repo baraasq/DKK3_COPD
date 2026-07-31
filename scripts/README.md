@@ -66,7 +66,9 @@ building downstream GeoMx objects:
 python scripts/03_geomx_qc/00_audit_gse292993_inputs.py --copy-geo-inputs --strict
 ```
 
-This writes:
+By default this exports the annotation, meta-merge, and final merged cell-type
+notebooks when available (`2_celltype_annotation`, `8_meta_merge`, and
+`10_pertpy_celltype_merged`). This writes:
 
 - `results/meta/gse292993_geomx_input_audit.json`
 - `results/tables/gse292993_dcc_input_manifest.csv`
@@ -262,6 +264,7 @@ This writes:
 - `results/tables/gse302339_annotation_code_cells.csv`
 - `intermediate/gse302339_scanpy_workflow_code/2_celltype_annotation.py`
 - `intermediate/gse302339_scanpy_workflow_code/8_meta_merge.py`
+- `intermediate/gse302339_scanpy_workflow_code/10_pertpy_celltype_merged.py`
 
 Those exported `.py` files are audit artifacts, not cleaned runnable scripts.
 Use them to recover the authors' cluster-to-cell-type dictionaries and the
@@ -288,8 +291,10 @@ This writes:
 - `results/tables/gse302339_author_celltype_dictionary_blocks.csv`
 
 The parser records the downstream `.obs` column assigned after each dictionary.
-For the pneumocyte/fibroblast question, inspect rows where
-`assigned_obs_column == parenchyma_celltype_level1`.
+With no `--code-file` arguments, it scans all exported notebook `.py` files in
+`intermediate/gse302339_scanpy_workflow_code`. For the pneumocyte/fibroblast
+question, use a map only when the saved-object audit confirms that the map and
+object use the same clustering.
 
 Before rerunning the authors' preprocessing notebook export, prepare the small
 `input/` helper files it expects:
@@ -359,9 +364,45 @@ and writes:
 
 - `results/meta/gse302339_author_preprocessing_patch_summary.json`
 
+If the cell-type annotation notebook reaches the main annotation outputs but
+then tries to read the optional downstream ABT/meta-merge artifact
+`output/adata_mergedmeta_abt_cr8`, stop it cleanly before that section for the
+parenchymal-signature workflow:
+
+```bash
+python scripts/06_celltype/10_patch_gse302339_celltype_annotation_for_signature_run.py --strict
+```
+
+This modifies only
+`intermediate/gse302339_scanpy_workflow_code/2_celltype_annotation.py` and
+writes:
+
+- `results/meta/gse302339_celltype_annotation_signature_patch_summary.json`
+
 After the authors' annotation workflow has been rerun, or if the pickle/H5AD
-artifact is otherwise available, build a GeoMx-compatible parenchymal signature
-matrix from the reconstructed author object:
+artifact is otherwise available, first audit the saved author objects against
+the extracted cluster-to-cell-type dictionaries:
+
+```bash
+python scripts/06_celltype/11_audit_gse302339_saved_author_objects.py --strict
+```
+
+This is a guardrail before deconvolution. It checks whether the saved object
+naturally contains the required labels (`AT1`, `AT2`, and `Fibroblast`) in its
+own `.obs` annotation column, and separately reports whether cluster IDs from
+the extracted notebook dictionaries overlap the saved object's Leiden clusters.
+Do not force a cluster map onto a saved object unless the audit and notebook
+context show that both came from the same clustering.
+
+It writes:
+
+- `results/meta/gse302339_saved_author_object_audit_summary.json`
+- `results/tables/gse302339_saved_author_object_summary.csv`
+- `results/tables/gse302339_saved_object_cluster_map_compatibility.csv`
+- `results/tables/gse302339_saved_object_required_celltype_compatibility.csv`
+
+If the saved object passes that audit, build a GeoMx-compatible parenchymal
+signature matrix from the reconstructed author object:
 
 ```bash
 python scripts/06_celltype/05_build_gse302339_author_signatures.py --strict

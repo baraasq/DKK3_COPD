@@ -21,6 +21,9 @@ DEFAULT_REQUIRED_CELL_TYPES = ["AT1", "AT2", "Fibroblast"]
 DEFAULT_REFERENCE_H5AD = project_path(
     "data/external/scrna_reference/gse302339_author_parenchyma_celltype_level1.h5ad"
 )
+DEFAULT_CLUSTER_MAP = project_path(
+    "results/tables/gse302339_author_celltype_cluster_maps.csv"
+)
 
 
 def load_scrna_audit_module():
@@ -88,6 +91,13 @@ def load_author_object(path: Path) -> tuple[Any | None, dict]:
             "status": "load_failed",
             "error": str(exc),
         }
+
+
+def read_csv(path: Path) -> list[dict]:
+    import csv
+
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))
 
 
 def obs_columns(adata: Any) -> list[str]:
@@ -174,6 +184,54 @@ def label_counts(adata: Any, cell_type_column: str) -> list[dict]:
     ]
 
 
+def cluster_label_map(
+    cluster_map_path: Path,
+    *,
+    assigned_obs_column: str,
+) -> dict[str, str]:
+    rows = read_csv(cluster_map_path)
+    mapping: dict[str, str] = {}
+    for row in rows:
+        if row.get("assigned_obs_column") != assigned_obs_column:
+            continue
+        label = str(row.get("celltype_label", "")).strip()
+        for cluster in str(row.get("cluster_ids", "")).split(";"):
+            cluster = cluster.strip()
+            if cluster and label:
+                mapping[cluster] = label
+    return mapping
+
+
+def apply_cluster_label_map(
+    adata: Any,
+    *,
+    cluster_column: str,
+    output_column: str,
+    mapping: dict[str, str],
+) -> dict:
+    if cluster_column not in adata.obs.columns:
+        return {
+            "applied": False,
+            "reason": f"cluster_column_missing:{cluster_column}",
+            "cluster_column": cluster_column,
+            "output_column": output_column,
+            "n_cluster_labels": len(mapping),
+        }
+    labels = adata.obs[cluster_column].astype(str).map(mapping)
+    n_assigned = int(labels.notna().sum())
+    adata.obs[output_column] = labels
+    return {
+        "applied": True,
+        "reason": "mapped_clusters",
+        "cluster_column": cluster_column,
+        "output_column": output_column,
+        "n_cluster_labels": len(mapping),
+        "n_cells_assigned": n_assigned,
+        "n_cells_unassigned": int(len(labels) - n_assigned),
+        "assigned_labels": sorted(str(value) for value in labels.dropna().unique()),
+    }
+
+
 def build_author_signatures(
     *,
     adata: Any,
@@ -240,6 +298,17 @@ def main() -> int:
     )
     parser.add_argument("--signature-output")
     parser.add_argument("--h5ad-output", default=str(DEFAULT_REFERENCE_H5AD))
+    parser.add_argument("--cluster-map", default=str(DEFAULT_CLUSTER_MAP))
+    parser.add_argument("--cluster-column", default="leiden")
+    parser.add_argument(
+        "--rebuild-labels-from-cluster-map",
+        action="store_true",
+        help=(
+            "Recreate --cell-type-column from the extracted author cluster map "
+            "before building signatures. Use only after confirming the cluster "
+            "IDs in the object match the extracted map."
+        ),
+    )
     parser.add_argument("--no-write-h5ad", action="store_true")
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
@@ -249,6 +318,7 @@ def main() -> int:
     processed_dir = configured_path(config, "geomx_processed_dir")
     processed_dir.mkdir(parents=True, exist_ok=True)
     input_object = project_path(args.input_object)
+    cluster_map_path = project_path(args.cluster_map)
     signature_output = (
         project_path(args.signature_output)
         if args.signature_output
@@ -279,6 +349,31 @@ def main() -> int:
             )
             return 2
         return 1
+
+    required_cell_types = args.required_cell_types or DEFAULT_REQUIRED_CELL_TYPES
+    label_rebuild_summary = {
+        "requested": args.rebuild_labels_from_cluster_map,
+        "applied": False,
+        "cluster_map": str(cluster_map_path),
+    }
+    if args.rebuild_labels_from_cluster_map:
+        if not cluster_map_path.exists():
+            label_rebuild_summary["reason"] = "cluster_map_missing"
+        else:
+            mapping = cluster_label_map(
+                cluster_map_path,
+                assigned_obs_column=args.cell_type_column,
+            )
+            label_rebuild_summary = {
+                "requested": True,
+                "cluster_map": str(cluster_map_path),
+                **apply_cluster_label_map(
+                    adata,
+                    cluster_column=args.cluster_column,
+                    output_column=args.cell_type_column,
+                    mapping=mapping,
+                ),
+            }
 
     if args.cell_type_column not in adata.obs.columns:
         failures.append(f"Cell type column not found: {args.cell_type_column}")
@@ -320,7 +415,6 @@ def main() -> int:
         )
 
     signature_cell_types = set(signature_summary.get("signature_cell_types", []))
-    required_cell_types = args.required_cell_types or DEFAULT_REQUIRED_CELL_TYPES
     missing_required = [
         label for label in required_cell_types if label not in signature_cell_types
     ]
@@ -350,6 +444,7 @@ def main() -> int:
         "selected_expression_source": f"layer:{chosen_layer}" if chosen_layer else "X",
         "layer_warning": layer_warning,
         "filter_summary": filter_summary,
+        "label_rebuild_summary": label_rebuild_summary,
         "required_cell_types": required_cell_types,
         "missing_required_cell_types": missing_required,
         "h5ad_output": h5ad_summary,

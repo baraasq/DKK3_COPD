@@ -183,6 +183,11 @@ def extract_maps(code_files: list[Path]) -> tuple[dict, list[dict], list[dict]]:
     return summary, rows, blocks
 
 
+def default_code_files() -> list[Path]:
+    exported = sorted(DEFAULT_CODE_DIR.glob("*.py"))
+    return exported if exported else DEFAULT_CODE_FILES
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Parse author celldict cluster-to-celltype mappings from exported GSE302339 notebook code."
@@ -199,7 +204,7 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
-    code_files = [Path(path).expanduser() for path in args.code_files] if args.code_files else DEFAULT_CODE_FILES
+    code_files = [Path(path).expanduser() for path in args.code_files] if args.code_files else default_code_files()
     results = ensure_results_dirs(load_config())
     summary_path = results["meta"] / "gse302339_author_celltype_map_summary.json"
     map_table = results["tables"] / "gse302339_author_celltype_cluster_maps.csv"

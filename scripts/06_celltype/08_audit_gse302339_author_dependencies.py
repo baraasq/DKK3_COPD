@@ -21,6 +21,7 @@ DEFAULT_NOTEBOOK_ZIP = "data/raw/downloads/zenodo/16341197/files/scanpy_workflow
 DEFAULT_OPTIONAL_MODULES = {"scvi", "mudata"}
 IMPORT_RE = re.compile(r"^\s*import\s+([A-Za-z_][\w.]*)(?:\s+as\s+\w+)?", re.MULTILINE)
 FROM_RE = re.compile(r"^\s*from\s+([A-Za-z_][\w.]*)\s+import\s+", re.MULTILINE)
+OPTIONAL_SKIP_MARKER = "NOTEBOOK-OPTIONAL"
 
 PACKAGE_BY_MODULE = {
     "PIL": "pillow",
@@ -179,14 +180,29 @@ def module_available(module: str) -> bool:
         return False
 
 
+def has_live_import_line(text: str, module: str) -> bool:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or OPTIONAL_SKIP_MARKER in stripped:
+            continue
+        if re.match(rf"^import\s+{re.escape(module)}(\s+as\s+\w+)?\s*$", stripped):
+            return True
+        if re.match(rf"^from\s+{re.escape(module)}(\.|\s+import\s+)", stripped):
+            return True
+    return False
+
+
 def dependency_rows(sources: list[dict], optional_modules: set[str]) -> tuple[list[dict], list[dict]]:
     module_sources: dict[str, set[str]] = {}
+    live_import_sources: dict[str, set[str]] = {}
     source_rows: list[dict] = []
     indirect_rows: list[dict] = []
     for source in sources:
         modules = imported_modules_from_source(source["text"])
         for module in modules:
             module_sources.setdefault(module, set()).add(source["source_id"])
+            if has_live_import_line(source["text"], module):
+                live_import_sources.setdefault(module, set()).add(source["source_id"])
         for indirect in indirect_modules_from_source(source["text"]):
             indirect_rows.append({**indirect, "source_id": source["source_id"]})
             module_sources.setdefault(indirect["module"], set()).add(source["source_id"])
@@ -205,7 +221,8 @@ def dependency_rows(sources: list[dict], optional_modules: set[str]) -> tuple[li
     rows: list[dict] = []
     for module in sorted(module_sources):
         package = PACKAGE_BY_MODULE.get(module, module)
-        optional = module in optional_modules
+        has_live_import = bool(live_import_sources.get(module))
+        optional = module in optional_modules and not has_live_import
         stdlib = is_stdlib_module(module)
         available = True if stdlib else module_available(module)
         status = "ok"
@@ -222,6 +239,8 @@ def dependency_rows(sources: list[dict], optional_modules: set[str]) -> tuple[li
                 "status": status,
                 "available": available,
                 "optional": optional,
+                "has_live_import": has_live_import,
+                "live_import_source_ids": ";".join(sorted(live_import_sources.get(module, []))),
                 "source_ids": ";".join(sorted(module_sources[module])),
                 "source_count": len(module_sources[module]),
             }

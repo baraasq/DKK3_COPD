@@ -21,6 +21,7 @@ DEFAULT_OUTPUT_DIR = project_path("intermediate/gse302339_scanpy_workflow_code")
 DEFAULT_NOTEBOOK_PATTERNS = [
     "2_celltype_annotation",
     "8_meta_merge",
+    "10_pertpy_celltype_merged",
 ]
 
 

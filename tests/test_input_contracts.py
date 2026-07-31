@@ -239,6 +239,28 @@ def load_author_preprocessing_patch_module():
     return module
 
 
+def load_celltype_annotation_signature_patch_module():
+    path = ROOT / "scripts" / "06_celltype" / "10_patch_gse302339_celltype_annotation_for_signature_run.py"
+    spec = importlib.util.spec_from_file_location("celltype_annotation_signature_patch", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load celltype annotation signature patch script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_saved_author_object_audit_module():
+    path = ROOT / "scripts" / "06_celltype" / "11_audit_gse302339_saved_author_objects.py"
+    spec = importlib.util.spec_from_file_location("saved_author_object_audit", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load saved author object audit script.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_dkk3_summary_module():
     path = ROOT / "scripts" / "05_dkk3" / "00_summarize_gse292993_dkk3.py"
     spec = importlib.util.spec_from_file_location("dkk3_summary", path)
@@ -1025,6 +1047,65 @@ for i in celldict_level1.keys():
         with self.assertRaises(TypeError):
             signature_module.coerce_anndata_like({"not_adata": object()})
 
+    def test_author_signature_builder_rebuilds_labels_from_cluster_map(self):
+        signature_module = load_author_signature_module()
+
+        class FakeObs(dict):
+            @property
+            def columns(self):
+                return list(self.keys())
+
+        class FakeSeries(list):
+            def astype(self, _dtype):
+                return self
+
+            def map(self, mapping):
+                return FakeMapped([mapping.get(str(value)) for value in self])
+
+        class FakeMapped(list):
+            def notna(self):
+                class BoolMask(list):
+                    def sum(self):
+                        return sum(bool(value) for value in self)
+
+                return BoolMask([value is not None for value in self])
+
+            def dropna(self):
+                return FakeMapped([value for value in self if value is not None])
+
+            def unique(self):
+                return sorted(set(self))
+
+        class FakeAdata:
+            def __init__(self):
+                self.obs = FakeObs({"leiden": FakeSeries(["0", "1", "2", "9"])})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster_map = Path(tmpdir) / "cluster_map.csv"
+            cluster_map.write_text(
+                "assigned_obs_column,celltype_label,cluster_ids\n"
+                "parenchyma_celltype_level1,AT1,0\n"
+                "parenchyma_celltype_level1,Fibroblast,1;2\n",
+                encoding="utf-8",
+            )
+            mapping = signature_module.cluster_label_map(
+                cluster_map,
+                assigned_obs_column="parenchyma_celltype_level1",
+            )
+            adata = FakeAdata()
+            summary = signature_module.apply_cluster_label_map(
+                adata,
+                cluster_column="leiden",
+                output_column="parenchyma_celltype_level1",
+                mapping=mapping,
+            )
+
+        self.assertEqual(mapping["2"], "Fibroblast")
+        self.assertTrue(summary["applied"])
+        self.assertEqual(summary["n_cells_assigned"], 3)
+        self.assertIn("Fibroblast", summary["assigned_labels"])
+        self.assertIn("parenchyma_celltype_level1", adata.obs.columns)
+
     def test_dkk3_summary_enriches_and_counts_donors(self):
         dkk3_module = load_dkk3_summary_module()
         rows = dkk3_module.enrich_roi_rows(
@@ -1530,6 +1611,28 @@ for i in celldict_level1.keys():
             ).endswith("harmonypy")
         )
 
+    def test_author_dependency_audit_live_optional_import_is_required(self):
+        module = load_author_dependency_audit_module()
+        rows, _ = module.dependency_rows(
+            [
+                {
+                    "source_id": "live.py",
+                    "source_kind": "exported_py",
+                    "text": "import mudata as mu\n",
+                },
+                {
+                    "source_id": "skipped.py",
+                    "source_kind": "exported_py",
+                    "text": "pass  # NOTEBOOK-OPTIONAL-MUDATA skipped: import mudata as mu\n",
+                },
+            ],
+            optional_modules={"mudata"},
+        )
+        mudata = next(row for row in rows if row["module"] == "mudata")
+
+        self.assertTrue(mudata["has_live_import"])
+        self.assertFalse(mudata["optional"])
+
     def test_author_preprocessing_patch_replaces_harmony_wrapper_once(self):
         module = load_author_preprocessing_patch_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1550,6 +1653,75 @@ for i in celldict_level1.keys():
             self.assertIn("CODEx-PATCH: run HarmonyPy directly", patched)
             self.assertNotIn("sce.pp.harmony_integrate", patched)
             self.assertIn("z_corr.T.shape == expected_shape", patched)
+
+    def test_celltype_annotation_signature_patch_stops_before_optional_abt_read(self):
+        module = load_celltype_annotation_signature_patch_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "2_celltype_annotation.py"
+            path.write_text(
+                "print('main annotations complete')\n"
+                "with open('output/adata_mergedmeta_abt_cr8', \"rb\") as file:\n"
+                "    adata = pickle.load(file)\n",
+                encoding="utf-8",
+            )
+
+            first = module.patch_annotation_code(path)
+            second = module.patch_annotation_code(path)
+            patched = path.read_text(encoding="utf-8")
+
+            self.assertTrue(first["patched"])
+            self.assertEqual(second["reason"], "already_patched")
+            self.assertIn("CODEx-PATCH: stop before optional missing ABT/meta-merge section", patched)
+            self.assertIn("raise SystemExit(0)", patched)
+            self.assertIn("with open('output/adata_mergedmeta_abt_cr8'", patched)
+
+    def test_saved_author_object_audit_detects_missing_fibroblast(self):
+        module = load_saved_author_object_audit_module()
+        import pandas as pd
+
+        class FakeAdata:
+            obs = pd.DataFrame(
+                {
+                    "leiden": ["0", "1", "2", "2"],
+                    "parenchyma_celltype_level1": [
+                        "AT1",
+                        "AT2",
+                        "AT2",
+                        "Club cell",
+                    ],
+                }
+            )
+            var = pd.DataFrame(index=["A", "B"])
+            X = [[0, 1], [1, 0], [1, 1], [2, 2]]
+            n_obs = 4
+            n_vars = 2
+
+        maps = {
+            "parenchyma_celltype_level1": {
+                "AT1": {"0"},
+                "AT2": {"1"},
+                "Fibroblast": {"28", "29"},
+            }
+        }
+        map_rows, required_rows = module.compatibility_rows(
+            object_name="parenchyma",
+            adata=FakeAdata(),
+            maps=maps,
+            label_columns=["parenchyma_celltype_level1"],
+            cluster_column="leiden",
+            required_cell_types=["AT1", "AT2", "Fibroblast"],
+        )
+        fibroblast = next(
+            row
+            for row in required_rows
+            if row["required_cell_type"] == "Fibroblast"
+        )
+
+        self.assertFalse(map_rows[0]["safe_default_for_signature"])
+        self.assertEqual(map_rows[0]["required_directly_observed"], "AT1;AT2")
+        self.assertEqual(fibroblast["direct_cell_count"], 0)
+        self.assertEqual(fibroblast["n_overlap_clusters"], 0)
+        self.assertEqual(fibroblast["n_cells_if_cluster_map_forced"], 0)
 
 
 if __name__ == "__main__":
