@@ -44,6 +44,16 @@ python scripts/06_celltype/15_prepare_gse302339_author_exact_replay.py \
   --strict
 ```
 
+If an earlier environment creation failed partway through pip installation,
+remove the partial environment before recreating it:
+
+```bash
+conda deactivate
+conda env remove -n gse302339_author
+conda env create -f environment.gse302339-author.yml
+conda activate gse302339_author
+```
+
 The preflight must report `ready_to_run_exact_replay: true`. It audits every
 installed version, maps all 65 H5 files into the author order, checks the exact
 metadata join keys, writes the 185-gene sidecar, and generates guarded copies of

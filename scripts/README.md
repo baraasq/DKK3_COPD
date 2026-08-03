@@ -465,6 +465,16 @@ python scripts/06_celltype/15_prepare_gse302339_author_exact_replay.py \
   --strict
 ```
 
+If the first environment creation failed during pip installation, remove that
+partial env and recreate it from the current file:
+
+```bash
+conda deactivate
+conda env remove -n gse302339_author
+conda env create -f environment.gse302339-author.yml
+conda activate gse302339_author
+```
+
 The preflight reconstructs the authors' 65-file processing order from unique
 raw cell counts, restores the global seed, extracts the exact 185-gene
 ribosomal tuple, checks the metadata join, and generates guarded notebook code.

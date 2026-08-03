@@ -4,32 +4,28 @@ channels:
 dependencies:
   - python=3.12.8
   - pip=24.3.1
+  # Keep compiled/numerical packages in conda so the environment does not depend
+  # on pip source builds for louvain/igraph/scipy-stack packages.
+  - scanpy=1.10.4
+  - anndata=0.11.1
+  - umap-learn=0.5.7
+  - numpy=1.26.4
+  - scipy=1.13.1
+  - pandas=2.2.3
+  - scikit-learn=1.6.0
+  - statsmodels=0.14.4
+  - python-igraph=0.11.8
+  - louvain=0.8.2
+  - pynndescent=0.5.13
+  - h5py=3.12.1
+  - matplotlib=3.10.0
+  - seaborn=0.13.2
+  - numba=0.60.0
+  - llvmlite=0.43.0
+  - zarr=2.18.3
+  - numcodecs=0.15.0
+  - leidenalg=0.10.2
   - pip:
-      # Exact versions printed by the deposited author notebooks.
-      - scanpy==1.10.4
-      - anndata==0.11.1
-      - umap-learn==0.5.7
-      - numpy==1.26.4
-      - scipy==1.13.1
-      - pandas==2.2.3
-      - scikit-learn==1.6.0
-      - statsmodels==0.14.4
-      - igraph==0.11.8
-      - louvain==0.8.2
-      - pynndescent==0.5.13
-      # I/O and plotting dependencies available when the notebook was run.
-      - h5py==3.12.1
-      - matplotlib==3.10.0
-      - seaborn==0.13.2
-      # Author-era numerical JIT stack used by UMAP/Scanpy graph construction.
-      - numba==0.60.0
-      - llvmlite==0.43.0
-      # AnnData 0.11.1 predates Zarr v3 support.
-      - zarr==2.18.3
-      - numcodecs==0.15.0
-      # Version identified from the notebook traceback and paper Methods.
+      # Versions identified from notebook output/traceback and paper Methods.
       - doubletdetection==4.2
-      # Latest HarmonyPy release when the notebook was executed (2025-01-06).
       - harmonypy==0.0.10
-      # Compatible author-era Leiden implementation; Scanpy uses flavor=igraph.
-      - leidenalg==0.10.2
