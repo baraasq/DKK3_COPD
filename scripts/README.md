@@ -541,6 +541,34 @@ checks that marker genes are higher in their intended signature than in
 off-target signatures. If `--strict` fails here, adjust the marker lists or
 selection thresholds rather than proceeding to composition plots.
 
+Quick terminal summary:
+
+```bash
+python - <<'PY'
+import pandas as pd
+
+path = "results/tables/gse302339_marker_program_signature_marker_validation.csv"
+df = pd.read_csv(path)
+df["passes_specificity"] = df["passes_specificity"].astype(str).eq("True")
+
+print(
+    df.groupby("marker_program")["passes_specificity"]
+      .agg(["sum", "count", "mean"])
+      .rename(columns={"sum": "n_pass", "count": "n_markers", "mean": "fraction_pass"})
+      .round(3)
+      .to_string()
+)
+
+print("\nWorst markers:")
+print(
+    df.sort_values("logfc_intended_vs_max_offtarget")
+      [["marker_program", "marker_gene", "logfc_intended_vs_max_offtarget"]]
+      .head(12)
+      .to_string(index=False)
+)
+PY
+```
+
 Use that signature matrix for compartment NNLS:
 
 ```bash
@@ -550,6 +578,7 @@ for compartment in airway parenchyma vessel; do
   python scripts/06_celltype/01_deconvolve_gse292993_compartment_nnls.py \
     --compartment "$compartment" \
     --signature-csv "$SIG" \
+    --min-overlap-genes 20 \
     --strict
 done
 ```

@@ -257,7 +257,16 @@ def main() -> int:
     )
     parser.add_argument("--compartment", default="parenchyma")
     parser.add_argument("--signature-csv")
-    parser.add_argument("--min-overlap-genes", type=int, default=500)
+    parser.add_argument(
+        "--min-overlap-genes",
+        type=int,
+        default=20,
+        help=(
+            "Minimum genes shared between the GeoMx matrix and signature. "
+            "Marker-program signatures intentionally use tens of genes, not "
+            "hundreds/thousands."
+        ),
+    )
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 

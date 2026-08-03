@@ -35,14 +35,10 @@ DEFAULT_MARKER_VALIDATION_FIGURE = (
 MARKER_SETS = {
     "AT1": [
         "AGER",
-        "PDPN",
-        "CAV1",
-        "CAV2",
         "CLDN18",
         "HOPX",
         "EMP2",
         "RTKN2",
-        "CYP4B1",
         "AQP5",
     ],
     "AT2": [
@@ -52,9 +48,7 @@ MARKER_SETS = {
         "SFTPA2",
         "ABCA3",
         "NAPSA",
-        "SLC34A2",
         "LPCAT1",
-        "MUC1",
     ],
     "Fibroblast": [
         "COL1A1",
@@ -91,8 +85,6 @@ MARKER_SETS = {
         "PIFO",
         "CAPS",
         "TPPP3",
-        "KRT5",
-        "KRT15",
         "MUC5B",
         "MUC5AC",
         "SCGB1A1",
@@ -100,13 +92,10 @@ MARKER_SETS = {
     ],
     "Immune": [
         "PTPRC",
-        "LST1",
-        "TYROBP",
         "CD3D",
         "CD3E",
         "MS4A1",
         "NKG7",
-        "LYZ",
     ],
 }
 
