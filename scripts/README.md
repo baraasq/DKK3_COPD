@@ -515,8 +515,8 @@ subset.
 The recommended working path is now a transparent marker-program reference
 rather than exact replay of the stochastic author notebooks. It uses GSE302339
 raw expression, selects high-confidence cells for lung programs, and builds a
-GeoMx-compatible logCPM signature matrix without transferring author cluster IDs
-across divergent objects:
+GeoMx-compatible marker-gene logCPM signature matrix without transferring author
+cluster IDs across divergent objects:
 
 ```bash
 python scripts/06_celltype/17_build_gse302339_marker_program_signatures.py --strict
@@ -531,8 +531,15 @@ programs are `AT1`, `AT2`, and `Fibroblast`. Outputs:
 - `results/tables/gse302339_marker_program_selection_summary.csv`
 - `results/tables/gse302339_marker_program_celltype_counts.csv`
 - `results/tables/gse302339_marker_program_signature_manifest.csv`
+- `results/tables/gse302339_marker_program_signature_marker_validation.csv`
+- `results/figures/gse302339_marker_program_signature_marker_heatmap.png`
 - `results/tables/gse302339_marker_program_selected_cells.csv.gz`
 - `data/processed/gse292993/gse302339_marker_program_signatures_raw_logcpm.csv`
+
+Inspect the marker-validation table/heatmap before trusting NNLS. The validation
+checks that marker genes are higher in their intended signature than in
+off-target signatures. If `--strict` fails here, adjust the marker lists or
+selection thresholds rather than proceeding to composition plots.
 
 Use that signature matrix for compartment NNLS:
 

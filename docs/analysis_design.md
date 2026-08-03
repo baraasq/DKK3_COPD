@@ -100,7 +100,10 @@ primary deconvolution reference should not depend on transferring author
 cluster IDs across divergent reconstructed objects. High-confidence AT1, AT2,
 fibroblast, endothelial, smooth-muscle, airway-epithelial, and immune cells are
 selected from raw sc/snRNA expression using prespecified marker programs, then
-aggregated into GeoMx-compatible signatures.
+aggregated into GeoMx-compatible marker-gene signatures. A marker-validation
+table and heatmap must be inspected before NNLS outputs are interpreted; if
+airway, stromal, endothelial, or immune markers do not enrich in their intended
+signature, the signature should be revised before deconvolution.
 
 DKK3-to-module association does not by itself establish which cell secreted
 DKK3 or which cell received a signal.

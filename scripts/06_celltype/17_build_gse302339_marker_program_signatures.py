@@ -28,6 +28,9 @@ DEFAULT_SELECTED_CELLS = (
 )
 DEFAULT_CELL_TYPE_COLUMN = "marker_program_celltype"
 DEFAULT_REQUIRED_CELL_TYPES = ["AT1", "AT2", "Fibroblast"]
+DEFAULT_MARKER_VALIDATION_FIGURE = (
+    "results/figures/gse302339_marker_program_signature_marker_heatmap.png"
+)
 
 MARKER_SETS = {
     "AT1": [
@@ -401,6 +404,168 @@ def write_selected_cells(
     return n_written
 
 
+def marker_gene_set(marker_sets: dict[str, list[str]]) -> set[str]:
+    return {gene.upper() for genes in marker_sets.values() for gene in genes}
+
+
+def filter_overlap_to_markers(overlap: dict, marker_sets: dict[str, list[str]]) -> dict:
+    markers = marker_gene_set(marker_sets)
+    keep = [
+        index
+        for index, gene in enumerate(overlap["common_genes"])
+        if str(gene).upper() in markers
+    ]
+    return {
+        **overlap,
+        "common_genes": [overlap["common_genes"][index] for index in keep],
+        "adata_gene_indices": [overlap["adata_gene_indices"][index] for index in keep],
+        "adata_gene_names": [overlap["adata_gene_names"][index] for index in keep],
+        "n_overlap": len(keep),
+        "signature_gene_set": "markers",
+    }
+
+
+def read_signature_matrix(path: Path) -> tuple[list[str], list[str], dict[str, dict[str, float]]]:
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.reader(handle)
+        header = next(reader)
+        genes = header[1:]
+        cell_types = []
+        values = {}
+        for row in reader:
+            if not row:
+                continue
+            cell_type = row[0]
+            cell_types.append(cell_type)
+            values[cell_type] = {
+                gene: float(value) if value not in ("", None) else 0.0
+                for gene, value in zip(genes, row[1:])
+            }
+    return cell_types, genes, values
+
+
+def marker_validation_rows(
+    *,
+    signature_path: Path,
+    marker_sets: dict[str, list[str]],
+    min_marker_logfc: float,
+    min_marker_specificity_fraction: float,
+) -> tuple[list[dict], dict, list[str]]:
+    cell_types, genes, values = read_signature_matrix(signature_path)
+    gene_set = {gene.upper(): gene for gene in genes}
+    rows = []
+    failures = []
+    pass_by_owner: dict[str, list[bool]] = {label: [] for label in marker_sets}
+    for owner, markers in marker_sets.items():
+        for marker in markers:
+            matched_gene = gene_set.get(marker.upper())
+            if not matched_gene:
+                rows.append(
+                    {
+                        "marker_program": owner,
+                        "marker_gene": marker,
+                        "gene_present_in_signature": "False",
+                        "intended_signature_value": "",
+                        "max_offtarget_value": "",
+                        "logfc_intended_vs_max_offtarget": "",
+                        "passes_specificity": "False",
+                    }
+                )
+                pass_by_owner[owner].append(False)
+                continue
+            intended = values.get(owner, {}).get(matched_gene, 0.0)
+            off_target = [
+                values[cell_type].get(matched_gene, 0.0)
+                for cell_type in cell_types
+                if cell_type != owner
+            ]
+            max_off = max(off_target) if off_target else 0.0
+            logfc = math.log2((intended + 0.1) / (max_off + 0.1))
+            passes = logfc >= min_marker_logfc
+            pass_by_owner[owner].append(passes)
+            rows.append(
+                {
+                    "marker_program": owner,
+                    "marker_gene": matched_gene,
+                    "gene_present_in_signature": "True",
+                    "intended_signature_value": intended,
+                    "max_offtarget_value": max_off,
+                    "logfc_intended_vs_max_offtarget": logfc,
+                    "passes_specificity": str(passes),
+                }
+            )
+    program_summary = {}
+    for owner, passed in pass_by_owner.items():
+        n_tested = len(passed)
+        n_passed = sum(1 for value in passed if value)
+        fraction = n_passed / n_tested if n_tested else 0.0
+        program_summary[owner] = {
+            "n_marker_specificity_pass": n_passed,
+            "n_marker_specificity_tested": n_tested,
+            "fraction_marker_specificity_pass": fraction,
+        }
+        if fraction < min_marker_specificity_fraction:
+            failures.append(
+                f"{owner} marker specificity fraction {fraction:.2f} "
+                f"< {min_marker_specificity_fraction:.2f}"
+            )
+    return rows, program_summary, failures
+
+
+def plot_marker_heatmap(
+    *,
+    signature_path: Path,
+    marker_sets: dict[str, list[str]],
+    output_path: Path,
+) -> dict:
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except Exception as exc:
+        return {"path": str(output_path), "written": False, "error": str(exc)}
+
+    cell_types, genes, values = read_signature_matrix(signature_path)
+    gene_lookup = {gene.upper(): gene for gene in genes}
+    ordered_genes = []
+    for markers in marker_sets.values():
+        for marker in markers:
+            matched = gene_lookup.get(marker.upper())
+            if matched and matched not in ordered_genes:
+                ordered_genes.append(matched)
+    if not ordered_genes or not cell_types:
+        return {"path": str(output_path), "written": False, "error": "empty matrix"}
+
+    matrix = np.asarray(
+        [[values[cell_type].get(gene, 0.0) for gene in ordered_genes] for cell_type in cell_types],
+        dtype=float,
+    )
+    col_min = matrix.min(axis=0)
+    col_max = matrix.max(axis=0)
+    scaled = (matrix - col_min) / np.maximum(col_max - col_min, 1e-9)
+
+    width = max(8, min(22, 0.35 * len(ordered_genes)))
+    height = max(3, 0.45 * len(cell_types))
+    fig, ax = plt.subplots(figsize=(width, height), constrained_layout=True)
+    image = ax.imshow(scaled, aspect="auto", cmap="viridis", vmin=0, vmax=1)
+    ax.set_xticks(range(len(ordered_genes)))
+    ax.set_xticklabels(ordered_genes, rotation=70, ha="right", fontsize=8)
+    ax.set_yticks(range(len(cell_types)))
+    ax.set_yticklabels(cell_types)
+    ax.set_title("Marker-program signature validation")
+    ax.set_xlabel("Marker genes, column-scaled")
+    ax.set_ylabel("Signature")
+    fig.colorbar(image, ax=ax, label="scaled logCPM")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=220)
+    plt.close(fig)
+    return {
+        "path": str(output_path),
+        "written": True,
+        "n_cell_types": len(cell_types),
+        "n_marker_genes": len(ordered_genes),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -429,8 +594,21 @@ def main() -> int:
     )
     parser.add_argument("--signature-output", default=DEFAULT_OUTPUT_SIGNATURE)
     parser.add_argument("--selected-cells-output", default=DEFAULT_SELECTED_CELLS)
+    parser.add_argument(
+        "--signature-gene-set",
+        choices=["markers", "all-overlap"],
+        default="markers",
+        help=(
+            "Genes used in the deconvolution signature. The default keeps only "
+            "the prespecified marker genes to avoid all-gene NNLS domination by "
+            "shared housekeeping/ambient signals."
+        ),
+    )
+    parser.add_argument("--marker-validation-figure", default=DEFAULT_MARKER_VALIDATION_FIGURE)
+    parser.add_argument("--min-marker-logfc", type=float, default=0.25)
+    parser.add_argument("--min-marker-specificity-fraction", type=float, default=0.35)
     parser.add_argument("--min-cells-per-cell-type", type=int, default=100)
-    parser.add_argument("--min-overlap-genes", type=int, default=500)
+    parser.add_argument("--min-overlap-genes", type=int, default=20)
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
@@ -443,6 +621,7 @@ def main() -> int:
     selection_path = table_dir / "gse302339_marker_program_selection_summary.csv"
     cell_counts_path = table_dir / "gse302339_marker_program_celltype_counts.csv"
     signature_manifest_path = table_dir / "gse302339_marker_program_signature_manifest.csv"
+    validation_path = table_dir / "gse302339_marker_program_signature_marker_validation.csv"
 
     include_cell_types = args.include_cell_types or list(MARKER_SETS)
     unknown_marker_sets = [label for label in include_cell_types if label not in MARKER_SETS]
@@ -513,6 +692,9 @@ def main() -> int:
     geomx_feature_manifest = results["tables"] / "gse292993_geomx_feature_manifest.csv"
     geomx_genes = ref_helpers.read_geomx_genes(geomx_feature_manifest)
     overlap = ref_helpers.select_gene_overlap(ref, geomx_genes)
+    full_overlap = overlap
+    if args.signature_gene_set == "markers":
+        overlap = filter_overlap_to_markers(overlap, marker_sets)
     if overlap["n_overlap"] < args.min_overlap_genes:
         failures.append(
             f"Too few GeoMx/scRNA overlap genes: {overlap['n_overlap']} "
@@ -548,6 +730,27 @@ def main() -> int:
         if int(row["n_present_markers"]) == 0:
             failures.append(f"No marker genes present for {row['cell_type']}")
 
+    validation_rows = []
+    marker_specificity_summary = {}
+    marker_validation_failures = []
+    heatmap_summary = {"written": False}
+    if signature_rows and signature_output.exists():
+        validation_rows, marker_specificity_summary, marker_validation_failures = marker_validation_rows(
+            signature_path=signature_output,
+            marker_sets=marker_sets,
+            min_marker_logfc=args.min_marker_logfc,
+            min_marker_specificity_fraction=args.min_marker_specificity_fraction,
+        )
+        failures.extend(
+            "Marker validation failed: " + message
+            for message in marker_validation_failures
+        )
+        heatmap_summary = plot_marker_heatmap(
+            signature_path=signature_output,
+            marker_sets=marker_sets,
+            output_path=project_path(args.marker_validation_figure),
+        )
+
     write_csv(
         marker_path,
         marker_rows,
@@ -574,6 +777,19 @@ def main() -> int:
         signature_rows,
         preferred=["cell_type", "n_cells", "n_cells_used", "n_genes"],
     )
+    write_csv(
+        validation_path,
+        validation_rows,
+        preferred=[
+            "marker_program",
+            "marker_gene",
+            "gene_present_in_signature",
+            "intended_signature_value",
+            "max_offtarget_value",
+            "logfc_intended_vs_max_offtarget",
+            "passes_specificity",
+        ],
+    )
 
     summary = {
         "strategy": "marker-program high-confidence cell selection",
@@ -586,6 +802,9 @@ def main() -> int:
             "min_detected_markers": args.min_detected_markers,
             "max_cells_per_cell_type": args.max_cells_per_cell_type,
             "min_cells_per_cell_type": args.min_cells_per_cell_type,
+            "signature_gene_set": args.signature_gene_set,
+            "min_marker_logfc": args.min_marker_logfc,
+            "min_marker_specificity_fraction": args.min_marker_specificity_fraction,
         },
         "include_cell_types": include_cell_types,
         "required_cell_types": required_cell_types,
@@ -595,9 +814,13 @@ def main() -> int:
         "gene_overlap": {
             "source": overlap["source"],
             "n_overlap": overlap["n_overlap"],
+            "n_full_overlap_before_signature_gene_filter": full_overlap["n_overlap"],
+            "signature_gene_set": args.signature_gene_set,
             "first_overlap_genes": overlap["common_genes"][:20],
             "primary_gene_DKK3_in_overlap": "DKK3" in set(overlap["common_genes"]),
         },
+        "marker_specificity_summary": marker_specificity_summary,
+        "marker_validation_figure": heatmap_summary,
         "signature_output": str(signature_output),
         "n_signature_cell_types": len(signature_rows),
         "signature_cell_types": signature_cell_types,
@@ -607,6 +830,8 @@ def main() -> int:
             "selection_summary": str(selection_path),
             "celltype_counts": str(cell_counts_path),
             "signature_manifest": str(signature_manifest_path),
+            "marker_validation": str(validation_path),
+            "marker_validation_figure": str(project_path(args.marker_validation_figure)),
             "selected_cells": str(selected_cells_path),
             "signature": str(signature_output),
         },
@@ -622,6 +847,8 @@ def main() -> int:
         selection_path,
         cell_counts_path,
         signature_manifest_path,
+        validation_path,
+        project_path(args.marker_validation_figure),
         selected_cells_path,
         signature_output,
     ):
