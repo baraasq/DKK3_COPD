@@ -569,6 +569,21 @@ print(
 PY
 ```
 
+Plot selected marker-program labels and canonical marker feature expression on
+the GSE302339 UMAP:
+
+```bash
+python scripts/06_celltype/18_plot_gse302339_marker_program_features.py --strict
+```
+
+This writes:
+
+- `results/meta/gse302339_marker_program_feature_plot_summary.json`
+- `results/tables/gse302339_marker_program_feature_plot_counts.csv`
+- `results/tables/gse302339_marker_program_feature_plot_genes.csv`
+- `results/figures/gse302339_marker_program_features/gse302339_marker_program_selected_labels_umap.png`
+- `results/figures/gse302339_marker_program_features/gse302339_marker_program_feature_umaps.png`
+
 Use that signature matrix for compartment NNLS:
 
 ```bash
