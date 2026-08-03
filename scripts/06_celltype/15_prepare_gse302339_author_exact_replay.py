@@ -460,6 +460,21 @@ def patch_preprocessing_code(
         "import random\nrandom.seed(0)\nnp.random.seed(0)",
         "author seed",
     )
+    text = replace_once(
+        text,
+        "    pseudocount=0.1,\n"
+        "    n_jobs=-1)",
+        "    pseudocount=0.1,\n"
+        "    random_state=(\n"
+        "        None\n"
+        "        if os.environ.get('GSE302339_DD_RANDOM_STATE', '0').lower() == 'none'\n"
+        "        else int(os.environ.get('GSE302339_DD_RANDOM_STATE', '0'))\n"
+        "    ),\n"
+        "    # Keep n_jobs as in the deposited notebook. The explicit random_state\n"
+        "    # records the library default and makes the replay contract visible.\n"
+        "    n_jobs=int(os.environ.get('GSE302339_DD_N_JOBS', '-1')))",
+        "explicit doubletdetection seed",
+    )
     text = text.replace(
         '"input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv"',
         f'"{ribosomal_file.as_posix()}"',
@@ -489,6 +504,7 @@ def patch_preprocessing_code(
     text = replace_once(
         text,
         "    print(adata.shape)\n    sc.pl.violin",
+        "    print(f\"Doublets removed: {int(adata.uns['doublets_removed'])}\")\n"
         "    print(adata.shape)\n"
         "    if tuple(adata.shape) != tuple(expected_post_doublet_shape):\n"
         "        raise RuntimeError(f'Exact replay post-doublet mismatch for {h5_path}: expected {tuple(expected_post_doublet_shape)}, got {adata.shape}')\n"
@@ -515,6 +531,13 @@ discovered_files = sorted(
 )
 if sorted(author_files) != discovered_files:
     raise RuntimeError('Exact-replay sample manifest does not match input H5 files')
+diagnostic_max_samples = int(os.environ.get('GSE302339_REPLAY_MAX_SAMPLES', '0') or '0')
+print(
+    'DOUBLETD_REPLAY_SETTINGS '
+    f"random_state={{os.environ.get('GSE302339_DD_RANDOM_STATE', '0')}} "
+    f"n_jobs={{os.environ.get('GSE302339_DD_N_JOBS', '-1')}} "
+    f"max_samples={{diagnostic_max_samples}}"
+)
 
 # %% [cell 7]
 out = []
@@ -527,7 +550,10 @@ for position, file in enumerate(author_files):
             expected_low_quality_counts[position],
             expected_post_doublet_shapes[position],
         )
-    )"""
+    )
+    if diagnostic_max_samples and position + 1 >= diagnostic_max_samples:
+        print(f'CODEX-AUTHOR-EXACT-REPLAY diagnostic stop after {{position + 1}} sample(s)')
+        raise SystemExit(0)"""
     text = replace_once(text, old_loop, new_loop, "author sample order")
 
     concat_shape = tuple(contract["concat_shape"])

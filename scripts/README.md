@@ -490,6 +490,9 @@ python intermediate/gse302339_author_exact_code/2_celltype_annotation.py \
   2>&1 | tee logs/gse302339_author_exact_annotation.log
 ```
 
+Do not run notebook 2 if notebook 1 exits non-zero. The annotation step depends
+on the integrated object written by the preprocessing replay after all gates pass.
+
 The generated scripts check every sample plus the 160,620-by-18,941 concat,
 160,620-by-2,323 HVG, full 62-cluster, parenchyma 41-cluster, and immune
 38-cluster checkpoints before assigning labels. Then export a stable

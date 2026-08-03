@@ -75,6 +75,10 @@ python intermediate/gse302339_author_exact_code/2_celltype_annotation.py \
   2>&1 | tee logs/gse302339_author_exact_annotation.log
 ```
 
+Do not run notebook 2 if notebook 1 exits non-zero. Notebook 2 depends on
+`output/gse302339_author_exact/adata_harmony_integrated_cr8`, which is written
+only after notebook 1 passes all sample, concat, HVG, and Harmony gates.
+
 The generated code stops immediately if any of these deposited-notebook
 checkpoints diverge:
 
