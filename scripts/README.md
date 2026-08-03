@@ -319,9 +319,11 @@ Before rerunning the authors' preprocessing notebook export, prepare the small
 python scripts/06_celltype/06_prepare_gse302339_author_input_helpers.py --strict
 ```
 
-This reconstructs `input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv` from the
-extracted Cell Ranger feature names using standard human ribosomal prefixes
-(`RPL`, `RPS`, `MRPL`, and `MRPS`). It also extracts
+This legacy helper reconstructs `input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv`
+from broad ribosomal prefixes. That approximation is adequate for dependency
+discovery, but it is **not** suitable for an exact author-annotation replay.
+Script 15 instead extracts the authors' exact 185-gene tuple from the deposited
+code. This helper also extracts
 `input/meta_cr8.csv` from the deposited Zenodo `scanpy_workflow.zip` if that
 sidecar is present. The script scans the notebooks for literal `input/...`
 file reads first, so unresolved sidecars are reported before rerunning a long
@@ -447,11 +449,66 @@ AT1/AT2/Fibroblast signatures. It writes:
 - `results/meta/gse302339_notebook_expected_cluster_comparison_summary.json`
 - `results/tables/gse302339_notebook_expected_cluster_comparison.csv`
 
-If the saved object passes that audit, build a GeoMx-compatible parenchymal
+### Checkpoint-matched author annotation replay
+
+The public deposits do not contain an annotated H5AD/pickle or a barcode-level
+cell-type table. To recover the deposited notebook annotations without manual
+marker reannotation or cross-object cluster-map transfer, create the isolated
+author runtime and prepare a deterministic replay:
+
+```bash
+conda env create -f environment.gse302339-author.yml
+conda activate gse302339_author
+
+python scripts/06_celltype/15_prepare_gse302339_author_exact_replay.py \
+  --prepare-code \
+  --strict
+```
+
+The preflight reconstructs the authors' 65-file processing order from unique
+raw cell counts, restores the global seed, extracts the exact 185-gene
+ribosomal tuple, checks the metadata join, and generates guarded notebook code.
+It also requires at least 25 GiB free and skips serialization of the unused
+2.3-GiB concatenated checkpoint. It must report
+`ready_to_run_exact_replay: true` before the long run:
+
+```bash
+set -o pipefail
+python intermediate/gse302339_author_exact_code/1_preprocessing_doublet_detection.py \
+  2>&1 | tee logs/gse302339_author_exact_preprocessing.log
+python intermediate/gse302339_author_exact_code/2_celltype_annotation.py \
+  2>&1 | tee logs/gse302339_author_exact_annotation.log
+```
+
+The generated scripts check every sample plus the 160,620-by-18,941 concat,
+160,620-by-2,323 HVG, full 62-cluster, parenchyma 41-cluster, and immune
+38-cluster checkpoints before assigning labels. Then export a stable
+sample-plus-barcode annotation table:
+
+```bash
+python scripts/06_celltype/16_export_gse302339_author_exact_annotations.py --strict
+```
+
+The export also requires the 26-iteration Harmony checkpoint and guarded
+annotation-completion message in the two replay logs.
+
+Full rationale and commands are in
+`docs/gse302339_author_annotation_replay.md`. This reconstructs the deposited
+notebook annotation (160,620 cells), not the unexplained paper-final 128,433-cell
+subset.
+
+If the exact-replay object passes that audit, build a GeoMx-compatible parenchymal
 signature matrix from the reconstructed author object:
 
 ```bash
-python scripts/06_celltype/05_build_gse302339_author_signatures.py --strict
+python scripts/06_celltype/05_build_gse302339_author_signatures.py \
+  --input-object output/gse302339_author_exact/parenchyma_harmony_annotated_cr8 \
+  --cell-type-column parenchyma_celltype_level1 \
+  --expression-source raw \
+  --signature-transform logcpm \
+  --signature-output data/processed/gse292993/gse302339_author_exact_parenchyma_signatures_rawX_logcpm.csv \
+  --no-write-h5ad \
+  --strict
 ```
 
 By default this expects `output/parenchyma_harmony_annotated_cr8` and the
@@ -461,8 +518,7 @@ By default this expects `output/parenchyma_harmony_annotated_cr8` and the
 - `results/meta/gse302339_author_signature_reference_summary.json`
 - `results/tables/gse302339_author_signature_celltype_counts.csv`
 - `results/tables/gse302339_author_signature_manifest.csv`
-- `data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv`
-- `data/external/scrna_reference/gse302339_author_parenchyma_celltype_level1.h5ad`
+- `data/processed/gse292993/gse302339_author_exact_parenchyma_signatures_rawX_logcpm.csv`
 
 Do not apply a cluster map across different saved objects. For example, the
 `parenchyma_celltype_level1` map extracted from `2_celltype_annotation.py` is
@@ -477,35 +533,21 @@ Only build a pneumocyte/fibroblast signature from an object that naturally
 contains the required labels in its own `.obs` column, or from the exact object
 whose clustering generated the author map. If the current reconstructed
 `parenchyma_harmony_annotated_cr8` object lacks `Fibroblast`, this command
-should fail under `--strict`; recover the authors' final matching object or
-perform marker-based reannotation before deconvolution:
-
-```bash
-python scripts/06_celltype/05_build_gse302339_author_signatures.py \
-  --input-object output/parenchyma_harmony_annotated_cr8 \
-  --cell-type-column parenchyma_celltype_level1 \
-  --include-cell-type AT1 \
-  --include-cell-type AT2 \
-  --include-cell-type Fibroblast \
-  --expression-source raw \
-  --signature-transform mean \
-  --signature-output data/processed/gse292993/gse302339_author_parenchyma_at1_at2_fibroblast_signatures_rawX_mean.csv \
-  --h5ad-output data/external/scrna_reference/gse302339_author_parenchyma_at1_at2_fibroblast.h5ad \
-  --no-write-h5ad \
-  --strict
-```
+should fail under `--strict`. Do not force the extracted cluster dictionary onto
+that divergent object. Use the checkpoint-matched script-15 replay above, or
+obtain the authors' saved annotated object.
 
 The signature builder uses `--expression-source auto` by default: it prefers the
 requested layer, then `raw.X`, then `.X`. Use the expression-slot audit above to
-confirm which source was selected. When using the author `raw.X` slot from these
-objects, use `--signature-transform mean` because `raw.X` appears to contain
-nonnegative log-normalized values rather than raw integer counts.
+confirm which source was selected. In notebook 1, `.raw` is assigned before
+`normalize_total` and `log1p`, so the checkpoint-matched replay's `raw.X` is the
+count matrix. Use `--signature-transform logcpm` for that source.
 
 Use that signature matrix with NNLS deconvolution:
 
 ```bash
 python scripts/06_celltype/01_deconvolve_gse292993_compartment_nnls.py \
-  --signature-csv data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv \
+  --signature-csv data/processed/gse292993/gse302339_author_exact_parenchyma_signatures_rawX_logcpm.csv \
   --strict
 ```
 
@@ -516,7 +558,7 @@ run the NNLS step once per compartment:
 for compartment in airway parenchyma vessel; do
   python scripts/06_celltype/01_deconvolve_gse292993_compartment_nnls.py \
     --compartment "$compartment" \
-    --signature-csv data/processed/gse292993/gse302339_author_parenchyma_signatures_logcpm.csv \
+    --signature-csv data/processed/gse292993/gse302339_author_exact_parenchyma_signatures_rawX_logcpm.csv \
     --strict
 done
 ```

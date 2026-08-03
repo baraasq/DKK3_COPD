@@ -4,6 +4,8 @@ data/**
 results/**
 !results/README.md
 outputs/
+output/
+input/
 intermediate/**
 !intermediate/README.md
 logs/

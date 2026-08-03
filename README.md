@@ -112,8 +112,11 @@ not delete or overwrite existing data.
 4. Run GeoMx QC and normalization without treating ROIs as independent
    patients.
 5. Map DKK3 by compartment and disease at both ROI and donor-summary levels.
-6. Resolve pneumocyte/fibroblast signals using marker modules and an external
-   COPD single-cell reference.
+6. Reconstruct the deposited GSE302339 author annotations with the
+   checkpoint-matched replay in
+   [`docs/gse302339_author_annotation_replay.md`](docs/gse302339_author_annotation_replay.md),
+   then resolve pneumocyte/fibroblast signals without cross-object cluster-ID
+   transfer.
 7. Add communication and cross-dataset validation only after the primary
    expression model is stable.
 
