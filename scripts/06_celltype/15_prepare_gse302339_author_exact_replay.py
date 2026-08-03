@@ -475,6 +475,17 @@ def patch_preprocessing_code(
         "    n_jobs=int(os.environ.get('GSE302339_DD_N_JOBS', '-1')))",
         "explicit doubletdetection seed",
     )
+    text = replace_once(
+        text,
+        "    #doublets = clf.fit(adata.X).predict(p_thresh=1e-16, voter_thresh=0.5)\n"
+        "    doublets = clf.fit(adata.X).predict(p_thresh=1e-3, voter_thresh=0.5)",
+        "    #doublets = clf.fit(adata.X).predict(p_thresh=1e-16, voter_thresh=0.5)\n"
+        "    dd_p_thresh = float(os.environ.get('GSE302339_DD_P_THRESH', '1e-3'))\n"
+        "    dd_voter_thresh = float(os.environ.get('GSE302339_DD_VOTER_THRESH', '0.5'))\n"
+        "    print(f'DOUBLETD_THRESHOLDS p_thresh={dd_p_thresh} voter_thresh={dd_voter_thresh}')\n"
+        "    doublets = clf.fit(adata.X).predict(p_thresh=dd_p_thresh, voter_thresh=dd_voter_thresh)",
+        "doubletdetection threshold controls",
+    )
     text = text.replace(
         '"input/GOCC_RIBOSOMAL_SUBUNIT.v2023.1.Hs.csv"',
         f'"{ribosomal_file.as_posix()}"',

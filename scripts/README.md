@@ -510,6 +510,49 @@ Full rationale and commands are in
 notebook annotation (160,620 cells), not the unexplained paper-final 128,433-cell
 subset.
 
+### Practical marker-program reference for deconvolution
+
+The recommended working path is now a transparent marker-program reference
+rather than exact replay of the stochastic author notebooks. It uses GSE302339
+raw expression, selects high-confidence cells for lung programs, and builds a
+GeoMx-compatible logCPM signature matrix without transferring author cluster IDs
+across divergent objects:
+
+```bash
+python scripts/06_celltype/17_build_gse302339_marker_program_signatures.py --strict
+```
+
+Default marker programs are `AT1`, `AT2`, `Fibroblast`, `Endothelial`,
+`Smooth muscle`, `Airway epithelial`, and `Immune`. The default required
+programs are `AT1`, `AT2`, and `Fibroblast`. Outputs:
+
+- `results/meta/gse302339_marker_program_signature_summary.json`
+- `results/tables/gse302339_marker_program_marker_manifest.csv`
+- `results/tables/gse302339_marker_program_selection_summary.csv`
+- `results/tables/gse302339_marker_program_celltype_counts.csv`
+- `results/tables/gse302339_marker_program_signature_manifest.csv`
+- `results/tables/gse302339_marker_program_selected_cells.csv.gz`
+- `data/processed/gse292993/gse302339_marker_program_signatures_raw_logcpm.csv`
+
+Use that signature matrix for compartment NNLS:
+
+```bash
+SIG=data/processed/gse292993/gse302339_marker_program_signatures_raw_logcpm.csv
+
+for compartment in airway parenchyma vessel; do
+  python scripts/06_celltype/01_deconvolve_gse292993_compartment_nnls.py \
+    --compartment "$compartment" \
+    --signature-csv "$SIG" \
+    --strict
+done
+```
+
+Then plot donor-balanced composition:
+
+```bash
+python scripts/09_figures/01_plot_gse292993_cell_composition_compartments.py --strict
+```
+
 If the exact-replay object passes that audit, build a GeoMx-compatible parenchymal
 signature matrix from the reconstructed author object:
 

@@ -94,6 +94,14 @@ fibroblast biology will therefore be inferred in stages:
    reference;
 5. verify that conclusions reproduce across donors.
 
+The working GSE302339 reference path is marker-program based. Exact replay of
+the deposited author notebooks is retained as an audit/recovery track, but the
+primary deconvolution reference should not depend on transferring author
+cluster IDs across divergent reconstructed objects. High-confidence AT1, AT2,
+fibroblast, endothelial, smooth-muscle, airway-epithelial, and immune cells are
+selected from raw sc/snRNA expression using prespecified marker programs, then
+aggregated into GeoMx-compatible signatures.
+
 DKK3-to-module association does not by itself establish which cell secreted
 DKK3 or which cell received a signal.
 
@@ -147,4 +155,3 @@ biological question.
   cell without supporting evidence.
 - Cross-sectional associations do not establish signaling direction or
   causality.
-
